@@ -25,6 +25,7 @@ Test credentials after seeding:
 import asyncio
 import sys
 import os
+from app.models.api_key import ApiKey  # noqa — registers ApiKey with SQLAlchemy
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
