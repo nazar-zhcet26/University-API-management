@@ -49,9 +49,9 @@ Government reporting endpoints (/v1/gov/*) require an **X-API-Key** header with 
 - GET /health/ready — readiness probe (checks DB + Redis)
 - GET /metrics      — Prometheus-format metrics
     """,
-    docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
-    redoc_url="/redoc" if settings.ENVIRONMENT != "production" else None,
-    openapi_url="/openapi.json" if settings.ENVIRONMENT != "production" else None,
+    docs_url="/docs" ,
+    redoc_url="/redoc" ,
+    openapi_url="/openapi.json" ,
 )
 
 # ── Rate Limiter ──────────────────────────────────────────────────────────────
