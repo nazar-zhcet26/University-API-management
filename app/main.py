@@ -166,9 +166,22 @@ async def admin_dashboard():
     return FileResponse(dashboard_path, media_type="text/html")
 
 
+@app.get("/assistant-ui", include_in_schema=False)
+async def library_assistant_ui():
+    """Serve the library assistant UI."""
+    import os
+    path = os.path.join(os.path.dirname(__file__), "..", "library-assistant.html")
+    if not os.path.exists(path):
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Library assistant UI not found."}
+        )
+    return FileResponse(path, media_type="text/html")
+
+
 @app.get("/redoc-local", include_in_schema=False)
 async def redoc_local():
-    return HTMLResponse("""
+    return HTMLResponse(f"""
     <!DOCTYPE html>
     <html>
     <head>
@@ -176,10 +189,10 @@ async def redoc_local():
         <meta charset="utf-8"/>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
-        <style>body { margin: 0; padding: 0; }</style>
+        <style>body {{ margin: 0; padding: 0; }}</style>
     </head>
     <body>
-        <redoc spec-url='http://127.0.0.1:8000/openapi.json'></redoc>
+        <redoc spec-url='/openapi.json'></redoc>
         <script src="https://cdn.jsdelivr.net/npm/redoc/bundles/redoc.standalone.js"></script>
     </body>
     </html>
