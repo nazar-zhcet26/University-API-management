@@ -25,6 +25,7 @@ COPY alembic/ ./alembic/
 COPY alembic.ini .
 COPY scripts/ ./scripts/
 COPY start.sh .
+COPY library-assistant.html .
 
 RUN chown -R appuser:appuser /app && \
     chmod +x /app/start.sh
