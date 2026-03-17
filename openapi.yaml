@@ -1,0 +1,2482 @@
+openapi: 3.0.3
+info:
+  title: University Services API
+  version: 1.0.0
+  description: 'The central API platform for university operations.
+
+    Covers Authentication, Students, Programs & Courses, Faculty, Library, AI
+    Assistant, API Key Management, and UAE Government Reporting domains.
+
+
+    ## Authentication
+
+    Most endpoints require a Bearer JWT token obtained via `POST /auth/login`.
+
+    Government reporting endpoints (`/gov/*`) require an `X-API-Key` header instead.
+
+
+    Get a JWT token: `POST /auth/login` with your email and password.
+
+    Use JWT: Add header `Authorization: Bearer <token>` to all requests.
+
+    Use API Key: Add header `X-API-Key: uak_<your_key>` — service role only.
+
+
+    ## Test Credentials (local / seeded environment)
+
+    | Role | Email | Password |
+
+    |------|-------|----------|
+
+    | Admin | admin@university.ac.ae | Admin@1234 |
+
+    | Student | student1@university.ac.ae | Student@1234 |
+
+    | Faculty | faculty1@university.ac.ae | Faculty@1234 |
+
+    | Librarian | librarian@university.ac.ae | Librarian@1234 |
+
+
+    ## API-Led Connectivity Architecture
+
+    Follows MuleSoft API-led connectivity:
+
+    - **System Layer**: Raw data access (student records, course catalog, book inventory)
+
+    - **Process Layer**: Business logic (enrollment validation, borrowing rules, capacity
+    checks)
+
+    - **Experience Layer**: Consumer-tailored responses (student portal, faculty dashboard)
+
+    - **Government Layer**: UAE MOEHE reporting endpoints (Sprint 9)
+
+
+    ## AI Library Assistant
+
+    The `/assistant` endpoints use Retrieval Augmented Generation (RAG) with Azure
+    OpenAI.
+
+    Requires `AZURE_OPENAI_API_KEY` environment variable to be set.
+
+    '
+  contact:
+    name: University IT - API Team
+    email: api-support@university.ac.ae
+  license:
+    name: Internal Use Only
+servers:
+- url: https://api.university.ac.ae/v1
+  description: Production
+- url: https://api-dev.university.ac.ae/v1
+  description: Development
+- url: http://localhost:8000/v1
+  description: Local Docker Compose
+tags:
+- name: Authentication
+  description: Login and token refresh
+- name: Students
+  description: Student registration and profile management
+- name: Programs
+  description: Academic program management
+- name: Courses
+  description: Course catalog and enrollment management
+- name: Faculty
+  description: Faculty profile management
+- name: Library - Books
+  description: Book catalog management
+- name: Library - Borrowings
+  description: Book borrowing and return operations
+- name: Library - Assistant
+  description: AI-powered semantic library assistant
+- name: Health
+  description: Liveness, readiness probes and metrics
+- name: API Keys
+  description: API key management for machine-to-machine authentication
+- name: UAE Government
+  description: UAE MOEHE reporting endpoints — requires X-API-Key with service role
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained via OAuth2 authorization flow
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+      description: Page number for pagination
+    LimitParam:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 25
+        minimum: 1
+        maximum: 100
+      description: Number of results per page
+    SortParam:
+      name: sort
+      in: query
+      schema:
+        type: string
+      description: 'Field to sort by. Prefix with - for descending. Example: sort=-created_at'
+  schemas:
+    # ── Sprint 9 — API Key schemas ──────────────────────────────────────────
+    ApiKeyCreate:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: MOEHE Integration
+        role:
+          type: string
+          enum: [service, admin, faculty, student, librarian]
+          default: service
+        expires_in_days:
+          type: integer
+          minimum: 1
+          maximum: 3650
+          default: 365
+          description: Days until expiry. Omit for no expiry.
+
+    ApiKeyUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        is_active:
+          type: boolean
+        expires_at:
+          type: string
+          format: date-time
+
+    ApiKeyResponse:
+      type: object
+      description: Safe representation — never includes key hash.
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          example: MOEHE Integration
+        key_prefix:
+          type: string
+          example: uak_3f8a2c1b
+          description: First 12 chars of the key — for identification only.
+        role:
+          type: string
+          example: service
+        is_active:
+          type: boolean
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ApiKeyCreateResponse:
+      type: object
+      description: Returned only on create and rotate. Raw key shown once — store immediately.
+      properties:
+        key:
+          type: string
+          example: uak_3f8a2c1b9e4d...
+          description: Raw API key — store this securely, shown only once.
+        api_key:
+          $ref: '#/components/schemas/ApiKeyResponse'
+
+    ApiKeyListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiKeyResponse'
+        total:
+          type: integer
+
+    # ── Sprint 9 — UAE Gov schemas ──────────────────────────────────────────
+    GovMeta:
+      type: object
+      properties:
+        total:
+          type: integer
+        generated_at:
+          type: string
+          format: date-time
+        institution_code:
+          type: string
+          example: UAE-UNI-001
+        api_version:
+          type: string
+          example: '1.0'
+
+    GovStudentRecord:
+      type: object
+      properties:
+        student_id:
+          type: string
+        full_name_en:
+          type: string
+        email:
+          type: string
+        enrollment_status:
+          type: string
+          enum: [active, inactive, graduated, suspended]
+        enrollment_year:
+          type: integer
+        program_code:
+          type: string
+          nullable: true
+        program_name:
+          type: string
+          nullable: true
+        department:
+          type: string
+          nullable: true
+        academic_level:
+          type: integer
+          description: UAE NQF level (1-10). Bachelor=7, Master=9, PhD=10.
+          example: 7
+        date_of_birth:
+          type: string
+          format: date
+          nullable: true
+
+    GovStudentsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/GovStudentRecord'
+        meta:
+          $ref: '#/components/schemas/GovMeta'
+
+    GovStatsResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            total_students:
+              type: integer
+            total_active_enrollments:
+              type: integer
+            by_status:
+              type: object
+              properties:
+                active:
+                  type: integer
+                inactive:
+                  type: integer
+                graduated:
+                  type: integer
+                suspended:
+                  type: integer
+            by_program:
+              type: array
+              items:
+                type: object
+                properties:
+                  program_code:
+                    type: string
+                  program_name:
+                    type: string
+                  department:
+                    type: string
+                  student_count:
+                    type: integer
+            by_enrollment_year:
+              type: object
+              additionalProperties:
+                type: integer
+        meta:
+          $ref: '#/components/schemas/GovMeta'
+
+    GovProgramRecord:
+      type: object
+      properties:
+        program_id:
+          type: string
+        program_code:
+          type: string
+        program_name:
+          type: string
+        department:
+          type: string
+        duration_years:
+          type: integer
+        description:
+          type: string
+          nullable: true
+        nqf_level:
+          type: integer
+          description: UAE National Qualifications Framework level (1-10)
+          example: 7
+        total_students:
+          type: integer
+
+    GovProgramsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/GovProgramRecord'
+        meta:
+          $ref: '#/components/schemas/GovMeta'
+
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 25
+        total_items:
+          type: integer
+          example: 142
+        total_pages:
+          type: integer
+          example: 6
+    ErrorResponse:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: The request body contains invalid fields
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  issue:
+                    type: string
+              example:
+              - field: email
+                issue: Must be a valid university email address
+    StudentBase:
+      type: object
+      required:
+      - first_name
+      - last_name
+      - email
+      - date_of_birth
+      - program_id
+      - enrollment_year
+      properties:
+        first_name:
+          type: string
+          example: Nazar
+        last_name:
+          type: string
+          example: Kamaal
+        email:
+          type: string
+          format: email
+          example: nazar.kamaal@university.ac.ae
+        date_of_birth:
+          type: string
+          format: date
+          example: '1997-05-15'
+        program_id:
+          type: string
+          description: Reference to the Programs domain — not embedded, fetched separately
+          example: prog_cs_101
+        enrollment_year:
+          type: integer
+          example: 2026
+        status:
+          type: string
+          enum:
+          - active
+          - inactive
+          - graduated
+          - suspended
+          default: active
+    Student:
+      allOf:
+      - $ref: '#/components/schemas/StudentBase'
+      - type: object
+        properties:
+          id:
+            type: string
+            example: stu_10042
+            readOnly: true
+          created_at:
+            type: string
+            format: date-time
+            readOnly: true
+          updated_at:
+            type: string
+            format: date-time
+            readOnly: true
+    StudentListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Student'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+    ProgramBase:
+      type: object
+      required:
+      - code
+      - name
+      - department
+      - duration_years
+      properties:
+        code:
+          type: string
+          example: CS-BSC
+        name:
+          type: string
+          example: Bachelor of Science in Computer Science
+        department:
+          type: string
+          example: computer_science
+        duration_years:
+          type: integer
+          example: 4
+        description:
+          type: string
+          example: A four-year program covering software engineering, AI, and systems
+            design.
+    Program:
+      allOf:
+      - $ref: '#/components/schemas/ProgramBase'
+      - type: object
+        properties:
+          id:
+            type: string
+            example: prog_cs_101
+            readOnly: true
+          created_at:
+            type: string
+            format: date-time
+            readOnly: true
+          updated_at:
+            type: string
+            format: date-time
+            readOnly: true
+    ProgramListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Program'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+    CourseBase:
+      type: object
+      required:
+      - code
+      - title
+      - program_id
+      - credits
+      - semester
+      - faculty_id
+      - max_capacity
+      properties:
+        code:
+          type: string
+          example: CS301
+        title:
+          type: string
+          example: Machine Learning Fundamentals
+        description:
+          type: string
+          example: Introduction to supervised and unsupervised learning techniques
+        program_id:
+          type: string
+          example: prog_cs_101
+        credits:
+          type: integer
+          example: 3
+        semester:
+          type: string
+          example: fall_2026
+        faculty_id:
+          type: string
+          description: Reference to the Faculty domain
+          example: fac_2001
+        max_capacity:
+          type: integer
+          example: 40
+    Course:
+      allOf:
+      - $ref: '#/components/schemas/CourseBase'
+      - type: object
+        properties:
+          id:
+            type: string
+            example: crs_5010
+            readOnly: true
+          current_enrollment:
+            type: integer
+            description: Server-computed derived field. Read-only — never sent by
+              the client.
+            readOnly: true
+            example: 27
+          created_at:
+            type: string
+            format: date-time
+            readOnly: true
+          updated_at:
+            type: string
+            format: date-time
+            readOnly: true
+    CourseListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Course'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+    EnrollmentRequest:
+      type: object
+      required:
+      - student_id
+      properties:
+        student_id:
+          type: string
+          example: stu_10042
+    Enrollment:
+      type: object
+      properties:
+        id:
+          type: string
+          example: enr_80001
+          readOnly: true
+        course_id:
+          type: string
+          example: crs_5010
+        student_id:
+          type: string
+          example: stu_10042
+        enrolled_at:
+          type: string
+          format: date-time
+          readOnly: true
+        status:
+          type: string
+          enum:
+          - active
+          - dropped
+          - completed
+          default: active
+    EnrollmentListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Enrollment'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+    FacultyBase:
+      type: object
+      required:
+      - first_name
+      - last_name
+      - email
+      - department
+      - title
+      properties:
+        first_name:
+          type: string
+          example: Sarah
+        last_name:
+          type: string
+          example: Ahmed
+        email:
+          type: string
+          format: email
+          example: s.ahmed@university.ac.ae
+        department:
+          type: string
+          example: computer_science
+        title:
+          type: string
+          enum:
+          - Lecturer
+          - Assistant Professor
+          - Associate Professor
+          - Professor
+          example: Associate Professor
+        specializations:
+          type: array
+          items:
+            type: string
+          example:
+          - machine_learning
+          - natural_language_processing
+        office_number:
+          type: string
+          example: B-204
+    Faculty:
+      allOf:
+      - $ref: '#/components/schemas/FacultyBase'
+      - type: object
+        properties:
+          id:
+            type: string
+            example: fac_2015
+            readOnly: true
+          created_at:
+            type: string
+            format: date-time
+            readOnly: true
+          updated_at:
+            type: string
+            format: date-time
+            readOnly: true
+    FacultyListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Faculty'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+    BookBase:
+      type: object
+      required:
+      - title
+      - author
+      - isbn
+      - genre
+      - total_copies
+      properties:
+        title:
+          type: string
+          example: Introduction to Algorithms
+        author:
+          type: string
+          example: Thomas Cormen
+        isbn:
+          type: string
+          example: '9780262033848'
+        genre:
+          type: string
+          example: computer_science
+        total_copies:
+          type: integer
+          example: 5
+        publisher:
+          type: string
+          example: MIT Press
+        published_year:
+          type: integer
+          example: 2009
+    Book:
+      allOf:
+      - $ref: '#/components/schemas/BookBase'
+      - type: object
+        properties:
+          id:
+            type: string
+            example: book_301
+            readOnly: true
+          available_copies:
+            type: integer
+            description: Server-computed. Read-only — calculated from total_copies
+              minus active borrowings.
+            readOnly: true
+            example: 3
+          created_at:
+            type: string
+            format: date-time
+            readOnly: true
+          updated_at:
+            type: string
+            format: date-time
+            readOnly: true
+    BookListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Book'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+    BorrowingRequest:
+      type: object
+      required:
+      - book_id
+      - student_id
+      - due_date
+      properties:
+        book_id:
+          type: string
+          example: book_301
+        student_id:
+          type: string
+          example: stu_10042
+        due_date:
+          type: string
+          format: date
+          example: '2026-03-25'
+    BorrowingUpdate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - returned
+          - lost
+          description: 'Updating status to ''returned'' automatically sets returned_at
+            to current timestamp.
+
+            The client never sends returned_at directly — it is server-managed.
+
+            '
+    Borrowing:
+      type: object
+      properties:
+        id:
+          type: string
+          example: brw_60001
+          readOnly: true
+        book_id:
+          type: string
+          example: book_301
+        student_id:
+          type: string
+          example: stu_10042
+        borrowed_at:
+          type: string
+          format: date-time
+          readOnly: true
+        due_date:
+          type: string
+          format: date
+          example: '2026-03-25'
+        returned_at:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+          description: Set automatically by server when status changes to 'returned'
+        status:
+          type: string
+          enum:
+          - active
+          - returned
+          - overdue
+          - lost
+          example: active
+    BorrowingListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Borrowing'
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+    ChatMessage:
+      type: object
+      required:
+      - role
+      - content
+      properties:
+        role:
+          type: string
+          enum:
+          - user
+          - assistant
+        content:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    ChatRequest:
+      type: object
+      required:
+      - query
+      properties:
+        query:
+          type: string
+          minLength: 3
+          maxLength: 500
+          example: I need a machine learning book for beginners
+        conversation_history:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+          default: []
+        available_only:
+          type: boolean
+          default: false
+          description: Only recommend books with available copies
+    ChatResponse:
+      type: object
+      properties:
+        answer:
+          type: string
+          description: AI-generated response grounded in the library catalog
+        sources:
+          type: array
+          items:
+            type: object
+          description: Books retrieved and used as context
+        query:
+          type: string
+        request_id:
+          type: string
+    SemanticSearchResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+        query:
+          type: string
+        total:
+          type: integer
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - alive
+          - ready
+          - not_ready
+          - healthy
+        version:
+          type: string
+        environment:
+          type: string
+        uptime_seconds:
+          type: integer
+        checks:
+          type: object
+    LoginRequest:
+      type: object
+      required:
+      - email
+      - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: student1@university.ac.ae
+        password:
+          type: string
+          example: Student@1234
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        token_type:
+          type: string
+          example: bearer
+        expires_in:
+          type: integer
+          example: 3600
+    RefreshRequest:
+      type: object
+      required:
+      - refresh_token
+      properties:
+        refresh_token:
+          type: string
+  responses:
+    BadRequest:
+      description: Invalid request body or parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid authentication token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Authenticated but insufficient permissions for this action
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Conflict with current resource state (e.g. duplicate email, already
+        enrolled)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: Semantically invalid — passes validation but violates a business
+        rule (e.g. course at capacity)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TooManyRequests:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+security:
+- BearerAuth: []
+paths:
+  /auth/login:
+    post:
+      tags:
+      - Authentication
+      summary: Login and get JWT tokens
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /auth/refresh:
+    post:
+      tags:
+      - Authentication
+      summary: Refresh access token
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: New access token issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /health/live:
+    get:
+      tags:
+      - Health
+      summary: Liveness probe
+      description: Is the process running? Used by Azure Container Apps to decide
+        whether to restart.
+      operationId: livenessCheck
+      security: []
+      responses:
+        '200':
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /health/ready:
+    get:
+      tags:
+      - Health
+      summary: Readiness probe
+      description: Are all dependencies healthy? Returns 503 if database or Redis
+        is unreachable.
+      operationId: readinessCheck
+      security: []
+      responses:
+        '200':
+          description: All dependencies healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: One or more dependencies unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /health:
+    get:
+      tags:
+      - Health
+      summary: Simple health check
+      description: Used by Azure APIM backend health probe.
+      operationId: healthCheck
+      security: []
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /students:
+    get:
+      tags:
+      - Students
+      summary: List all students
+      description: Returns a paginated list of students. Supports filtering by program,
+        year, and status.
+      parameters:
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      - $ref: '#/components/parameters/SortParam'
+      - name: program
+        in: query
+        schema:
+          type: string
+        example: computer_science
+      - name: year
+        in: query
+        schema:
+          type: integer
+        example: 2026
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - active
+          - inactive
+          - graduated
+          - suspended
+      responses:
+        '200':
+          description: Paginated list of students
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: listStudents
+    post:
+      tags:
+      - Students
+      summary: Register a new student
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudentBase'
+      responses:
+        '201':
+          description: Student registered successfully
+          headers:
+            Location:
+              description: URI of the newly created student
+              schema:
+                type: string
+                example: /students/stu_10042
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Student'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      operationId: createStudent
+  /students/{student_id}:
+    parameters:
+    - name: student_id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: stu_10042
+    get:
+      tags:
+      - Students
+      summary: Get a specific student
+      responses:
+        '200':
+          description: Student record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Student'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: getStudent
+    put:
+      tags:
+      - Students
+      summary: Full update of student record
+      description: Replaces the entire student record. All required fields must be
+        included.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudentBase'
+      responses:
+        '200':
+          description: Student updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Student'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: replaceStudent
+    patch:
+      tags:
+      - Students
+      summary: Partial update of student record
+      description: Updates only the provided fields. Omitted fields retain their current
+        values.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                status:
+                  type: string
+                  enum:
+                  - active
+                  - inactive
+                  - graduated
+                  - suspended
+                office_number:
+                  type: string
+      responses:
+        '200':
+          description: Student partially updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Student'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: updateStudent
+    delete:
+      tags:
+      - Students
+      summary: Remove a student
+      responses:
+        '204':
+          description: Student deleted successfully. No body returned.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: deleteStudent
+  /students/{student_id}/enrollments:
+    get:
+      tags:
+      - Students
+      summary: Get all course enrollments for a student
+      description: Cross-domain relationship — links Students to Courses.
+      parameters:
+      - name: student_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Paginated list of enrollments for this student
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrollmentListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: getStudentEnrollments
+  /students/{student_id}/borrowings:
+    get:
+      tags:
+      - Students
+      summary: Get all library borrowings for a student
+      description: Cross-domain relationship — links Students to Library.
+      parameters:
+      - name: student_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Paginated list of borrowings for this student
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BorrowingListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: getStudentBorrowings
+  /programs:
+    get:
+      tags:
+      - Programs
+      summary: List all programs
+      parameters:
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      - name: department
+        in: query
+        schema:
+          type: string
+        example: computer_science
+      responses:
+        '200':
+          description: Paginated list of programs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgramListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      operationId: listPrograms
+    post:
+      tags:
+      - Programs
+      summary: Create a new program
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProgramBase'
+      responses:
+        '201':
+          description: Program created successfully
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /programs/prog_cs_101
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Program'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      operationId: createProgram
+  /programs/{program_id}:
+    parameters:
+    - name: program_id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: prog_cs_101
+    get:
+      tags:
+      - Programs
+      summary: Get a specific program
+      responses:
+        '200':
+          description: Program record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Program'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: getProgram
+    put:
+      tags:
+      - Programs
+      summary: Full update of a program
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProgramBase'
+      responses:
+        '200':
+          description: Program updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Program'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: replaceProgram
+    delete:
+      tags:
+      - Programs
+      summary: Remove a program
+      responses:
+        '204':
+          description: Program deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: deleteProgram
+  /programs/{program_id}/courses:
+    get:
+      tags:
+      - Programs
+      summary: List all courses within a program
+      description: Convenience relationship endpoint. Equivalent to GET /courses?program_id={program_id}
+      parameters:
+      - name: program_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      - name: semester
+        in: query
+        schema:
+          type: string
+        example: fall_2026
+      responses:
+        '200':
+          description: Paginated list of courses in this program
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: getProgramCourses
+  /courses:
+    get:
+      tags:
+      - Courses
+      summary: List all courses
+      description: Returns courses across all programs. Filter by program_id to narrow
+        down.
+      parameters:
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      - $ref: '#/components/parameters/SortParam'
+      - name: program_id
+        in: query
+        schema:
+          type: string
+      - name: semester
+        in: query
+        schema:
+          type: string
+      - name: faculty_id
+        in: query
+        schema:
+          type: string
+      - name: available
+        in: query
+        schema:
+          type: boolean
+        description: Filter to only courses with open enrollment spots
+      responses:
+        '200':
+          description: Paginated list of courses
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      operationId: listCourses
+    post:
+      tags:
+      - Courses
+      summary: Create a new course
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CourseBase'
+      responses:
+        '201':
+          description: Course created successfully
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /courses/crs_5010
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Course'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      operationId: createCourse
+  /courses/{course_id}:
+    parameters:
+    - name: course_id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: crs_5010
+    get:
+      tags:
+      - Courses
+      summary: Get a specific course
+      responses:
+        '200':
+          description: Course record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Course'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: getCourse
+    put:
+      tags:
+      - Courses
+      summary: Full update of a course
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CourseBase'
+      responses:
+        '200':
+          description: Course updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Course'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: replaceCourse
+    delete:
+      tags:
+      - Courses
+      summary: Remove a course
+      responses:
+        '204':
+          description: Course deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: deleteCourse
+  /courses/{course_id}/students:
+    get:
+      tags:
+      - Courses
+      summary: List all students enrolled in a course
+      parameters:
+      - name: course_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Paginated list of students in this course
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: getCourseStudents
+  /courses/{course_id}/enrollments:
+    post:
+      tags:
+      - Courses
+      summary: Enroll a student in a course
+      description: 'Business rules enforced here (Process API layer):
+
+        - Student must exist
+
+        - Course must exist and have available capacity
+
+        - Student must not already be enrolled in this course
+
+        - Prerequisite checks (future implementation)
+
+        '
+      parameters:
+      - name: course_id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnrollmentRequest'
+      responses:
+        '201':
+          description: Student enrolled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Enrollment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+      operationId: enrollStudent
+  /courses/{course_id}/enrollments/{enrollment_id}:
+    delete:
+      tags:
+      - Courses
+      summary: Remove an enrollment (drop a course)
+      parameters:
+      - name: course_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: enrollment_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Enrollment removed successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: dropEnrollment
+  /faculty:
+    get:
+      tags:
+      - Faculty
+      summary: List all faculty members
+      parameters:
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      - $ref: '#/components/parameters/SortParam'
+      - name: department
+        in: query
+        schema:
+          type: string
+        example: computer_science
+      - name: title
+        in: query
+        schema:
+          type: string
+          enum:
+          - Lecturer
+          - Assistant Professor
+          - Associate Professor
+          - Professor
+      responses:
+        '200':
+          description: Paginated list of faculty
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacultyListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      operationId: listFaculty
+    post:
+      tags:
+      - Faculty
+      summary: Add a new faculty member
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FacultyBase'
+      responses:
+        '201':
+          description: Faculty member added
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /faculty/fac_2015
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Faculty'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      operationId: createFaculty
+  /faculty/{faculty_id}:
+    parameters:
+    - name: faculty_id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: fac_2015
+    get:
+      tags:
+      - Faculty
+      summary: Get a specific faculty member
+      responses:
+        '200':
+          description: Faculty record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Faculty'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: getFaculty
+    put:
+      tags:
+      - Faculty
+      summary: Full update of faculty record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FacultyBase'
+      responses:
+        '200':
+          description: Faculty updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Faculty'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: replaceFaculty
+    patch:
+      tags:
+      - Faculty
+      summary: Partial update of faculty record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                office_number:
+                  type: string
+                specializations:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Faculty partially updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Faculty'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: updateFaculty
+    delete:
+      tags:
+      - Faculty
+      summary: Remove a faculty member
+      responses:
+        '204':
+          description: Faculty member deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: deleteFaculty
+  /faculty/{faculty_id}/courses:
+    get:
+      tags:
+      - Faculty
+      summary: Get all courses taught by a faculty member
+      parameters:
+      - name: faculty_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      - name: semester
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Paginated list of courses for this faculty member
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: getFacultyCourses
+  /books:
+    get:
+      tags:
+      - Library - Books
+      summary: List all books
+      parameters:
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      - $ref: '#/components/parameters/SortParam'
+      - name: genre
+        in: query
+        schema:
+          type: string
+        example: computer_science
+      - name: available
+        in: query
+        schema:
+          type: boolean
+        description: Filter to only books with available copies
+      - name: author
+        in: query
+        schema:
+          type: string
+      - name: q
+        in: query
+        schema:
+          type: string
+        description: Full-text search across title, author, and description
+      responses:
+        '200':
+          description: Paginated list of books
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      operationId: listBooks
+    post:
+      tags:
+      - Library - Books
+      summary: Add a new book to the catalog
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookBase'
+      responses:
+        '201':
+          description: Book added to catalog
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /books/book_301
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      operationId: createBook
+  /books/{book_id}:
+    parameters:
+    - name: book_id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: book_301
+    get:
+      tags:
+      - Library - Books
+      summary: Get a specific book
+      responses:
+        '200':
+          description: Book record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: getBook
+    put:
+      tags:
+      - Library - Books
+      summary: Full update of a book record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookBase'
+      responses:
+        '200':
+          description: Book updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: replaceBook
+    patch:
+      tags:
+      - Library - Books
+      summary: Partial update (e.g. update total_copies when new copies arrive)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                total_copies:
+                  type: integer
+                genre:
+                  type: string
+      responses:
+        '200':
+          description: Book partially updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: updateBook
+    delete:
+      tags:
+      - Library - Books
+      summary: Remove a book from the catalog
+      responses:
+        '204':
+          description: Book deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: deleteBook
+  /books/{book_id}/borrowings:
+    get:
+      tags:
+      - Library - Books
+      summary: Get borrowing history for a specific book
+      parameters:
+      - name: book_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - active
+          - returned
+          - overdue
+          - lost
+      responses:
+        '200':
+          description: Paginated borrowing history for this book
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BorrowingListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: getBookBorrowings
+  /borrowings:
+    get:
+      tags:
+      - Library - Borrowings
+      summary: List all borrowing records
+      description: "Top-level resource — not nested under books or students because\
+        \ \nborrowings are relationships between both, queryable from either direction.\n"
+      parameters:
+      - $ref: '#/components/parameters/PageParam'
+      - $ref: '#/components/parameters/LimitParam'
+      - name: student_id
+        in: query
+        schema:
+          type: string
+        description: Filter borrowings by student
+        example: stu_10042
+      - name: book_id
+        in: query
+        schema:
+          type: string
+        description: Filter borrowings by book
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - active
+          - returned
+          - overdue
+          - lost
+        description: Filter by borrowing status. Use status=overdue for library overdue
+          reports.
+      responses:
+        '200':
+          description: Paginated list of borrowing records
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BorrowingListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      operationId: listBorrowings
+    post:
+      tags:
+      - Library - Borrowings
+      summary: Borrow a book
+      description: 'Business rules enforced:
+
+        - Book must exist and have available copies
+
+        - Student must exist and have active account
+
+        - Student must not already have this book borrowed
+
+        '
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BorrowingRequest'
+      responses:
+        '201':
+          description: Book borrowed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Borrowing'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+      operationId: createBorrowing
+  /borrowings/{borrowing_id}:
+    parameters:
+    - name: borrowing_id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: brw_60001
+    get:
+      tags:
+      - Library - Borrowings
+      summary: Get a specific borrowing record
+      responses:
+        '200':
+          description: Borrowing record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Borrowing'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: getBorrowing
+    patch:
+      tags:
+      - Library - Borrowings
+      summary: Update a borrowing — primarily used to return a book
+      description: 'Setting status to ''returned'' automatically triggers:
+
+        - returned_at set to current server timestamp
+
+        - available_copies on the book incremented by 1
+
+        The client never manages these side effects — they are server-handled.
+
+        '
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BorrowingUpdate'
+      responses:
+        '200':
+          description: Borrowing updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Borrowing'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      operationId: updateBorrowing
+  /assistant/chat:
+    post:
+      tags:
+      - Library - Assistant
+      summary: Ask the library assistant
+      description: Natural language query over the book catalog using RAG (Retrieval
+        Augmented Generation). Returns a complete response grounded in real catalog
+        data.
+      operationId: chatWithAssistant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: AI response with source books
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          description: AI service temporarily unavailable
+  /assistant/chat/stream:
+    post:
+      tags:
+      - Library - Assistant
+      summary: Ask the library assistant (streaming)
+      description: Same as /assistant/chat but streams tokens as Server-Sent Events.
+        Use for real-time typing effect in UI.
+      operationId: chatWithAssistantStream
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: SSE stream of tokens
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              example: 'data: {"type": "token", "content": "Based on our catalog..."}
+
+
+                data: {"type": "done"}'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /assistant/search:
+    get:
+      tags:
+      - Library - Assistant
+      summary: Semantic book search
+      description: Search books by semantic similarity — finds conceptually related
+        books even without exact keyword matches.
+      operationId: semanticBookSearch
+      parameters:
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 2
+        example: machine learning algorithms
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 5
+          minimum: 1
+          maximum: 20
+      - name: available_only
+        in: query
+        schema:
+          type: boolean
+          default: false
+      - name: min_similarity
+        in: query
+        schema:
+          type: number
+          default: 0.65
+          minimum: 0.0
+          maximum: 1.0
+      responses:
+        '200':
+          description: Ranked semantic search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SemanticSearchResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /assistant/books/{book_id}/index:
+    post:
+      tags:
+      - Library - Assistant
+      summary: Re-index a book embedding
+      description: Regenerate the semantic embedding for a book. Call after updating
+        a book description. Librarian or admin only.
+      operationId: indexBook
+      parameters:
+      - name: book_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '202':
+          description: Indexing accepted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── API KEYS ────────────────────────────────────────────────────────────────
+  /api-keys:
+    post:
+      tags:
+      - API Keys
+      summary: Create API key
+      description: Generates a new API key. The raw key is returned exactly once — store it securely. Admin only.
+      operationId: createApiKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiKeyCreate'
+            example:
+              name: MOEHE Integration
+              role: service
+              expires_in_days: 365
+      responses:
+        '201':
+          description: API key created. Raw key shown once — copy immediately.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyCreateResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    get:
+      tags:
+      - API Keys
+      summary: List API keys
+      description: Returns all API keys. Never includes key hashes — only prefix and metadata. Admin only.
+      operationId: listApiKeys
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api-keys/{key_id}:
+    patch:
+      tags:
+      - API Keys
+      summary: Update API key
+      description: Update name, active status, or expiry. Cannot change role or regenerate hash. Admin only.
+      operationId: updateApiKey
+      parameters:
+      - name: key_id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiKeyUpdate'
+      responses:
+        '200':
+          description: Updated API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+      - API Keys
+      summary: Revoke API key
+      description: Soft-deletes by setting is_active=false. Row kept for audit trail. Admin only.
+      operationId: revokeApiKey
+      parameters:
+      - name: key_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Key revoked
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api-keys/{key_id}/rotate:
+    post:
+      tags:
+      - API Keys
+      summary: Rotate API key
+      description: Generates a new key and replaces the stored hash atomically. Old key stops working immediately. Returns new raw key once.
+      operationId: rotateApiKey
+      parameters:
+      - name: key_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: New raw key — copy immediately, shown only once.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyCreateResponse'
+        '400':
+          description: Cannot rotate a revoked key
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── UAE GOVERNMENT ──────────────────────────────────────────────────────────
+  /gov/students:
+    get:
+      tags:
+      - UAE Government
+      summary: UAE Gov — student roster
+      description: Student list in UAE MOEHE API-first format. Requires X-API-Key with service role. JWT Bearer tokens are rejected.
+      operationId: govStudents
+      security:
+      - ApiKeyAuth: []
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 1000
+      responses:
+        '200':
+          description: Student roster in UAE MOEHE format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GovStudentsResponse'
+              example:
+                data:
+                - student_id: abc-123
+                  full_name_en: Ahmed Al Rashidi
+                  email: ahmed@university.ac.ae
+                  enrollment_status: active
+                  enrollment_year: 2023
+                  program_code: BSCS
+                  program_name: Computer Science
+                  department: Engineering
+                  academic_level: 7
+                  date_of_birth: '2000-04-15'
+                meta:
+                  total: 1
+                  generated_at: '2026-03-15T10:00:00+00:00'
+                  institution_code: UAE-UNI-001
+                  api_version: '1.0'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /gov/enrollment-stats:
+    get:
+      tags:
+      - UAE Government
+      summary: UAE Gov — enrollment statistics
+      description: Aggregated enrollment stats in MOEHE reporting format. Requires X-API-Key with service role.
+      operationId: govEnrollmentStats
+      security:
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Enrollment statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GovStatsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /gov/programs:
+    get:
+      tags:
+      - UAE Government
+      summary: UAE Gov — program catalog
+      description: Program catalog with NQF levels for MOEHE reporting. Requires X-API-Key with service role.
+      operationId: govPrograms
+      security:
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Program catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GovProgramsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'

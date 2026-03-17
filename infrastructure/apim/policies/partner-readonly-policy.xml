@@ -1,0 +1,161 @@
+<!--
+  policies/partner-readonly-policy.xml
+  ─────────────────────────────────────────────────────────────────────────────
+  Applied to partner institution subscriptions.
+  
+  This is the most restrictive product policy — partners are external
+  organizations and should have the minimum access necessary.
+  
+  Restrictions enforced HERE at the gateway (not in your backend code):
+  1. Only GET requests allowed — partners can read, never write
+  2. Only /courses and /programs paths allowed — no student or faculty data
+  3. Strict rate limit — 100 calls/minute
+  4. Response transformation — strip any internal fields before returning
+  
+  This demonstrates the power of gateway-level policies:
+  The SAME backend serves all consumers. The gateway shapes
+  what each consumer sees. Zero backend code changes needed
+  to onboard a new partner with different restrictions.
+-->
+<policies>
+
+  <inbound>
+
+    <!--
+      API Key validation — partners use subscription key auth, not JWT.
+      
+      Why API keys for partners instead of JWT?
+      Partners are organizations, not individual users. They're running
+      server-to-server integrations. API keys are simpler for this use case.
+      The subscription key is already validated by APIM before this policy runs,
+      so we don't need an explicit check here — APIM does it automatically
+      when subscriptionRequired=true on the product.
+    -->
+
+    <!--
+      Method restriction: GET only.
+      Any other method returns 405 Method Not Allowed immediately.
+      Never reaches the backend.
+    -->
+    <choose>
+      <when condition="@(context.Request.Method != "GET")">
+        <return-response>
+          <set-status code="405" reason="Method Not Allowed" />
+          <set-header name="Content-Type" exists-action="override">
+            <value>application/json</value>
+          </set-header>
+          <set-header name="Allow" exists-action="override">
+            <value>GET</value>
+          </set-header>
+          <set-body>{
+  "error": {
+    "code": "READ_ONLY_PRODUCT",
+    "message": "This API product only supports GET operations. Write operations are not permitted for partner access."
+  }
+}</set-body>
+        </return-response>
+      </when>
+    </choose>
+
+    <!--
+      Path restriction: only /courses and /programs.
+      
+      Partners requesting /students, /faculty, /books, or /borrowings
+      get a 403 immediately. This is access control at the URL level,
+      enforced before the request reaches your backend.
+      
+      context.Request.Url.Path contains the path after the APIM prefix.
+    -->
+    <choose>
+      <when condition="@{
+        var path = context.Request.Url.Path.ToLower();
+        return !path.StartsWith('/v1/courses') && !path.StartsWith('/v1/programs');
+      }">
+        <return-response>
+          <set-status code="403" reason="Forbidden" />
+          <set-header name="Content-Type" exists-action="override">
+            <value>application/json</value>
+          </set-header>
+          <set-body>{
+  "error": {
+    "code": "PATH_NOT_PERMITTED",
+    "message": "Partner access is restricted to /v1/courses and /v1/programs endpoints only."
+  }
+}</set-body>
+        </return-response>
+      </when>
+    </choose>
+
+    <!--
+      Strict rate limit: 100 calls/minute per subscription.
+      Much lower than internal products.
+    -->
+    <rate-limit-by-key
+      calls="100"
+      renewal-period="60"
+      counter-key="@(context.Subscription.Id)"
+      retry-after-header-name="Retry-After" />
+
+    <!--
+      Add a header so the backend knows this is a partner request.
+      The backend can use this to return public-only fields
+      (e.g., don't return internal course IDs, only public course codes).
+    -->
+    <set-header name="X-Consumer-Type" exists-action="override">
+      <value>partner</value>
+    </set-header>
+
+    <base />
+
+  </inbound>
+
+  <backend>
+    <forward-request timeout="15" />
+  </backend>
+
+  <outbound>
+
+    <!--
+      Response field filtering — remove internal fields before returning.
+      
+      Partners don't need to see our internal IDs, timestamps, or
+      capacity details. We strip those from the response.
+      
+      This uses APIM's set-body policy with C# expression to
+      parse and reshape the JSON response.
+    -->
+    <set-body>@{
+      var body = context.Response.Body.As<JObject>();
+      if (body["data"] != null) {
+        foreach (var item in body["data"]) {
+          // Remove internal fields not relevant to partners
+          ((JObject)item).Remove("created_at");
+          ((JObject)item).Remove("updated_at");
+          ((JObject)item).Remove("faculty_id");
+          ((JObject)item).Remove("max_capacity");
+          ((JObject)item).Remove("current_enrollment");
+        }
+      }
+      return body.ToString();
+    }</set-body>
+
+    <!--
+      Add deprecation notice header if this is an old API version.
+      Partners should know to plan for upgrades.
+    -->
+    <set-header name="X-API-Version" exists-action="override">
+      <value>1.0.0</value>
+    </set-header>
+    <set-header name="X-Partner-Access" exists-action="override">
+      <value>read-only</value>
+    </set-header>
+
+    <base />
+
+  </outbound>
+
+  <on-error>
+    <base />
+  </on-error>
+
+</policies>

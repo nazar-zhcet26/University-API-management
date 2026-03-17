@@ -1,0 +1,1528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UniAPI — Admin Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0a0c10; --surface:#111318; --surface2:#171a22; --surface3:#1e2130;
+    --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.12);
+    --text:#e8eaf0; --text2:#8b90a0; --text3:#555b6e;
+    --accent:#4f8ef7; --accent2:#6c63ff;
+    --green:#34d399; --amber:#fbbf24; --red:#f87171; --teal:#22d3ee;
+    --font:'Syne',sans-serif; --mono:'JetBrains Mono',monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);display:flex;height:100vh;overflow:hidden;font-size:14px;}
+  .sidebar{width:220px;min-width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;}
+  .logo{padding:20px 18px 16px;border-bottom:1px solid var(--border);}
+  .logo-badge{display:inline-flex;align-items:center;gap:8px;}
+  .logo-icon{width:28px;height:28px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;}
+  .logo-text{font-size:13px;font-weight:700;}
+  .logo-sub{font-size:10px;color:var(--text3);font-family:var(--mono);margin-top:1px;}
+  .nav-section{padding:12px 10px 4px;}
+  .nav-label{font-size:10px;color:var(--text3);font-family:var(--mono);padding:0 8px;margin-bottom:4px;letter-spacing:.08em;text-transform:uppercase;}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;cursor:pointer;font-size:13px;color:var(--text2);transition:all .15s;user-select:none;border:1px solid transparent;}
+  .nav-item:hover{background:var(--surface2);color:var(--text);}
+  .nav-item.active{background:var(--surface3);color:var(--accent);border-color:rgba(79,142,247,.2);}
+  .nav-item .icon{font-size:15px;width:18px;text-align:center;}
+  .nav-item .badge{margin-left:auto;font-family:var(--mono);font-size:10px;background:var(--surface3);color:var(--text3);padding:1px 6px;border-radius:10px;}
+  .nav-item.active .badge{background:rgba(79,142,247,.15);color:var(--accent);}
+  .sidebar-footer{margin-top:auto;padding:12px 10px;border-top:1px solid var(--border);}
+  .api-status{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:7px;background:var(--surface2);cursor:pointer;}
+  .status-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);transition:background .3s;flex-shrink:0;}
+  .status-dot.online{background:var(--green);box-shadow:0 0 6px var(--green);}
+  .status-dot.offline{background:var(--red);}
+  .status-text{font-size:11px;color:var(--text2);font-family:var(--mono);}
+  .status-url{font-size:10px;color:var(--text3);font-family:var(--mono);}
+  #debug-msg{font-size:10px;color:var(--text3);font-family:var(--mono);padding:5px 10px 0;word-break:break-all;line-height:1.5;}
+  .main{flex:1;overflow:hidden;display:flex;flex-direction:column;}
+  .topbar{height:54px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:12px;flex-shrink:0;}
+  .topbar-title{font-size:15px;font-weight:600;flex:1;}
+  .topbar-actions{display:flex;gap:8px;}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:7px;cursor:pointer;font-size:12px;font-family:var(--font);font-weight:500;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);transition:all .15s;}
+  .btn:hover{background:var(--surface3);color:var(--text);}
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .btn.primary:hover{opacity:.9;}
+  .btn.danger{background:rgba(248,113,113,.1);color:var(--red);border-color:rgba(248,113,113,.3);}
+  .btn.success{background:rgba(52,211,153,.1);color:var(--green);border-color:rgba(52,211,153,.3);}
+  .content{flex:1;overflow-y:auto;padding:20px;scrollbar-width:thin;scrollbar-color:var(--surface3) transparent;}
+  .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;}
+  .stat-label{font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:8px;}
+  .stat-value{font-size:26px;font-weight:700;line-height:1;}
+  .stat-value.accent{color:var(--accent);}.stat-value.green{color:var(--green);}.stat-value.amber{color:var(--amber);}.stat-value.teal{color:var(--teal);}
+  .stat-sub{font-size:11px;color:var(--text3);margin-top:6px;font-family:var(--mono);}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+  .grid-3{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;}
+  .card-header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);}
+  .card-title{font-size:13px;font-weight:600;}
+  .card-body{padding:16px;}
+  .table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  .table th{text-align:left;padding:8px 12px;color:var(--text3);font-family:var(--mono);font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);background:var(--surface2);}
+  .table td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--text2);vertical-align:middle;}
+  .table tr:last-child td{border-bottom:none;}
+  .table tr:hover td{background:var(--surface2);}
+  .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:10px;font-family:var(--mono);font-weight:500;}
+  .badge.active{background:rgba(52,211,153,.12);color:var(--green);}
+  .badge.inactive,.badge.suspended,.badge.dropped{background:rgba(85,91,110,.3);color:var(--text3);}
+  .badge.graduated,.badge.completed{background:rgba(79,142,247,.12);color:var(--accent);}
+  .badge.overdue,.badge.lost{background:rgba(248,113,113,.12);color:var(--red);}
+  .badge.returned{background:rgba(85,91,110,.3);color:var(--text3);}
+  .badge.get{background:rgba(52,211,153,.12);color:var(--green);}
+  .badge.post{background:rgba(79,142,247,.12);color:var(--accent);}
+  .badge.put,.badge.patch{background:rgba(251,191,36,.12);color:var(--amber);}
+  .badge.delete{background:rgba(248,113,113,.12);color:var(--red);}
+  .avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;background:rgba(79,142,247,.15);color:var(--accent);}
+  .input{background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:7px 11px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%;}
+  .input:focus{border-color:var(--accent);}
+  .input::placeholder{color:var(--text3);}
+  .input:disabled{opacity:.5;cursor:not-allowed;}
+  select.input{cursor:pointer;}
+  .search-wrap{position:relative;}
+  .search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:13px;}
+  .search-wrap .input{padding-left:30px;}
+  .domain-tag{display:inline-flex;padding:2px 7px;border-radius:4px;font-size:10px;font-family:var(--mono);background:var(--surface3);color:var(--text3);}
+  .loading{display:flex;align-items:center;justify-content:center;padding:40px;color:var(--text3);font-family:var(--mono);font-size:12px;gap:8px;}
+  .spinner{width:14px;height:14px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .empty{text-align:center;padding:40px;color:var(--text3);font-family:var(--mono);font-size:12px;}
+  .error-banner{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:var(--red);font-family:var(--mono);display:flex;align-items:center;gap:8px;}
+  .warn-banner{background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.25);border-radius:10px;padding:16px 20px;margin-bottom:20px;display:flex;gap:12px;align-items:flex-start;}
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:100;align-items:center;justify-content:center;}
+  .modal-overlay.show{display:flex;}
+  .modal{background:var(--surface);border:1px solid var(--border2);border-radius:12px;width:460px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.5);}
+  .modal-header{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:1;}
+  .modal-title{font-size:14px;font-weight:600;}
+  .modal-close{cursor:pointer;color:var(--text3);font-size:18px;line-height:1;}
+  .modal-body{padding:18px;}
+  .form-group{margin-bottom:14px;}
+  .form-label{font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:5px;display:block;text-transform:uppercase;letter-spacing:.05em;}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .form-hint{font-size:10px;color:var(--text3);font-family:var(--mono);margin-top:4px;}
+  .modal-footer{display:flex;justify-content:flex-end;gap:8px;padding:0 18px 18px;}
+  .endpoint-group{margin-bottom:12px;}
+  .endpoint-group-header{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);}
+  .endpoint-row{display:flex;align-items:center;gap:10px;padding:8px 14px;border-radius:6px;margin-bottom:2px;border:1px solid transparent;transition:all .12s;}
+  .endpoint-row:hover{background:var(--surface2);border-color:var(--border);}
+  .endpoint-path{font-family:var(--mono);font-size:11.5px;color:var(--text2);flex:1;}
+  .endpoint-path .param{color:var(--amber);}
+  .endpoint-desc{font-size:11px;color:var(--text3);max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .chart-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;}
+  .chart-bar-outer{width:100%;background:var(--surface3);border-radius:3px;overflow:hidden;}
+  .chart-bar-inner{background:var(--accent);border-radius:3px;}
+  .chart-bar-label{font-size:9px;color:var(--text3);font-family:var(--mono);}
+  .pagination{display:flex;align-items:center;gap:6px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--border);}
+  .page-btn{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;font-family:var(--mono);background:var(--surface2);color:var(--text3);border:1px solid var(--border);transition:all .12s;}
+  .page-btn:hover{color:var(--text);border-color:var(--border2);}
+  .page-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .page-info{font-size:11px;color:var(--text3);font-family:var(--mono);}
+  ::-webkit-scrollbar{width:5px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px;}
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="logo">
+    <div class="logo-badge">
+      <div class="logo-icon">U</div>
+      <div><div class="logo-text">UniAPI</div><div class="logo-sub">admin console</div></div>
+    </div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">overview</div>
+    <div class="nav-item active" onclick="showView('dashboard')"><span class="icon">◈</span> Dashboard</div>
+    <div class="nav-item" onclick="showView('analytics')"><span class="icon">▦</span> Analytics</div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">manage</div>
+    <div class="nav-item" onclick="showView('students')"><span class="icon">◉</span> Students <span class="badge" id="badge-students">–</span></div>
+    <div class="nav-item" onclick="showView('books')"><span class="icon">◫</span> Books <span class="badge" id="badge-books">–</span></div>
+    <div class="nav-item" onclick="showView('borrowings')"><span class="icon">◇</span> Borrowings <span class="badge" id="badge-borrowings">–</span></div>
+    <div class="nav-item" onclick="showView('courses')"><span class="icon">⊞</span> Courses <span class="badge" id="badge-courses">–</span></div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">sprint 9</div>
+    <div class="nav-item" onclick="showView('apikeys')"><span class="icon">⚿</span> API Keys <span class="badge" id="badge-apikeys">–</span></div>
+    <div class="nav-item" onclick="showView('govdata')"><span class="icon">🇦🇪</span> UAE Gov <span class="badge">3</span></div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">explore</div>
+    <div class="nav-item" onclick="showView('endpoints')"><span class="icon">⋮</span> Endpoints <span class="badge">49</span></div>
+  </div>
+  <div class="sidebar-footer">
+    <div class="api-status" onclick="testConnection()" title="Click to re-test">
+      <div class="status-dot" id="status-dot"></div>
+      <div><div class="status-text" id="status-text">connecting...</div><div class="status-url">127.0.0.1:8000</div></div>
+    </div>
+    <div id="debug-msg"></div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title" id="page-title">Dashboard</div>
+    <div class="topbar-actions">
+      <div class="btn" onclick="refreshAll()">↻ Refresh</div>
+      <div class="btn primary" id="primary-action" onclick="primaryAction()">+ New Student</div>
+    </div>
+  </div>
+  <div class="content" id="content">
+    <div class="loading"><div class="spinner"></div> connecting...</div>
+  </div>
+</div>
+
+<!-- MODAL: Student -->
+<div class="modal-overlay" id="student-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="student-modal-title">Create Student</div>
+      <div class="modal-close" onclick="closeModal('student-modal')">✕</div>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">First Name *</label><input class="input" id="sf-first" placeholder="Ahmed" /></div>
+        <div class="form-group"><label class="form-label">Last Name *</label><input class="input" id="sf-last" placeholder="Al Rashidi" /></div>
+      </div>
+      <div class="form-group"><label class="form-label">Email *</label><input class="input" id="sf-email" type="email" placeholder="ahmed@university.ac.ae" /></div>
+      <div class="form-group"><label class="form-label">Date of Birth *</label><input class="input" id="sf-dob" type="date" /></div>
+      <div class="form-group">
+        <label class="form-label">Program ID *</label>
+        <input class="input" id="sf-program" placeholder="e.g. b6ca4153-e4af-407b-902f-8d23609f980a" />
+        <div class="form-hint">UUID of an existing program. Find it in GET /v1/courses (program_id field).</div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Enrollment Year *</label><input class="input" id="sf-year" type="number" value="2025" min="2000" max="2100" /></div>
+        <div class="form-group"><label class="form-label">Status</label>
+          <select class="input" id="sf-status">
+            <option value="active">active</option>
+            <option value="inactive">inactive</option>
+            <option value="graduated">graduated</option>
+            <option value="suspended">suspended</option>
+          </select>
+        </div>
+      </div>
+      <div id="student-modal-error" style="display:none" class="error-banner">⚠ <span id="student-modal-error-msg"></span></div>
+    </div>
+    <div class="modal-footer">
+      <div class="btn" onclick="closeModal('student-modal')">Cancel</div>
+      <div class="btn primary" id="student-modal-submit" onclick="submitStudent()">Create Student</div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Book -->
+<div class="modal-overlay" id="book-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="book-modal-title">Add Book</div>
+      <div class="modal-close" onclick="closeModal('book-modal')">✕</div>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Title *</label><input class="input" id="bf-title" placeholder="Introduction to Algorithms" /></div>
+      <div class="form-group"><label class="form-label">Author *</label><input class="input" id="bf-author" placeholder="Thomas H. Cormen" /></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">ISBN *</label><input class="input" id="bf-isbn" placeholder="978-0262033848" /></div>
+        <div class="form-group"><label class="form-label">Genre *</label><input class="input" id="bf-genre" placeholder="Computer Science" /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Total Copies *</label><input class="input" id="bf-copies" type="number" value="1" min="1" /></div>
+        <div class="form-group"><label class="form-label">Published Year</label><input class="input" id="bf-year" type="number" placeholder="2022" /></div>
+      </div>
+      <div class="form-group"><label class="form-label">Publisher</label><input class="input" id="bf-publisher" placeholder="MIT Press" /></div>
+      <div id="book-modal-error" style="display:none" class="error-banner">⚠ <span id="book-modal-error-msg"></span></div>
+    </div>
+    <div class="modal-footer">
+      <div class="btn" onclick="closeModal('book-modal')">Cancel</div>
+      <div class="btn primary" id="book-modal-submit" onclick="submitBook()">Add Book</div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Borrowing -->
+<div class="modal-overlay" id="borrow-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Create Borrowing</div>
+      <div class="modal-close" onclick="closeModal('borrow-modal')">✕</div>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Student *</label>
+        <select class="input" id="brf-student">
+          <option value="">Loading students...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Book *</label>
+        <select class="input" id="brf-book">
+          <option value="">Loading books...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Due Date *</label>
+        <input class="input" id="brf-due" type="date" />
+      </div>
+      <div id="borrow-modal-error" style="display:none" class="error-banner">⚠ <span id="borrow-modal-error-msg"></span></div>
+    </div>
+    <div class="modal-footer">
+      <div class="btn" onclick="closeModal('borrow-modal')">Cancel</div>
+      <div class="btn primary" onclick="submitBorrowing()">Create Borrowing</div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Course -->
+<div class="modal-overlay" id="course-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="course-modal-title">Create Course</div>
+      <div class="modal-close" onclick="closeModal('course-modal')">✕</div>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Course Code *</label><input class="input" id="cf-code" placeholder="CS401" /></div>
+        <div class="form-group"><label class="form-label">Credits *</label><input class="input" id="cf-credits" type="number" value="3" min="1" max="6" /></div>
+      </div>
+      <div class="form-group"><label class="form-label">Title *</label><input class="input" id="cf-title" placeholder="Advanced Algorithms" /></div>
+      <div class="form-group"><label class="form-label">Description</label><input class="input" id="cf-desc" placeholder="Optional description" /></div>
+      <div class="form-group">
+        <label class="form-label">Program *</label>
+        <select class="input" id="cf-program">
+          <option value="">Select a program...</option>
+        </select>
+        <div class="form-hint" id="cf-program-hint">Loading programs from existing courses...</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Faculty *</label>
+        <select class="input" id="cf-faculty">
+          <option value="">Select faculty...</option>
+        </select>
+        <div class="form-hint" id="cf-faculty-hint">Loading faculty from existing courses...</div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Semester *</label>
+          <select class="input" id="cf-semester">
+            <option value="Fall 2025">Fall 2025</option>
+            <option value="Spring 2026">Spring 2026</option>
+            <option value="Summer 2026">Summer 2026</option>
+            <option value="Fall 2026">Fall 2026</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Max Capacity *</label><input class="input" id="cf-capacity" type="number" value="30" min="1" /></div>
+      </div>
+      <div id="course-modal-error" style="display:none" class="error-banner">⚠ <span id="course-modal-error-msg"></span></div>
+    </div>
+    <div class="modal-footer">
+      <div class="btn" onclick="closeModal('course-modal')">Cancel</div>
+      <div class="btn primary" id="course-modal-submit" onclick="submitCourse()">Create Course</div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: API Key -->
+<div class="modal-overlay" id="apikey-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="apikey-modal-title">Create API Key</div>
+      <div class="modal-close" onclick="closeModal('apikey-modal')">✕</div>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Key Name *</label><input class="input" id="ak-name" placeholder="e.g. MuleSoft Integration" /></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Role *</label>
+          <select class="input" id="ak-role">
+            <option value="service">service</option>
+            <option value="admin">admin</option>
+            <option value="faculty">faculty</option>
+            <option value="student">student</option>
+            <option value="librarian">librarian</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Expires (days)</label>
+          <input class="input" id="ak-expires" type="number" value="365" min="1" max="3650" />
+        </div>
+      </div>
+      <div id="apikey-modal-error" style="display:none" class="error-banner">⚠ <span id="apikey-modal-error-msg"></span></div>
+      <!-- Key reveal area (shown after creation) -->
+      <div id="ak-reveal" style="display:none">
+        <div style="background:rgba(52,211,153,.06);border:1px solid rgba(52,211,153,.25);border-radius:8px;padding:14px;margin-top:12px">
+          <div style="font-size:10px;color:var(--green);font-family:var(--mono);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em">✓ Key created — copy now, it won't be shown again</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div id="ak-value" style="font-family:var(--mono);font-size:11px;color:var(--text);word-break:break-all;flex:1;background:var(--surface3);padding:8px 10px;border-radius:6px"></div>
+            <div class="btn" style="flex-shrink:0;padding:5px 10px;font-size:11px" onclick="copyApiKey()">copy</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer" id="apikey-modal-footer">
+      <div class="btn" onclick="closeModal('apikey-modal')">Cancel</div>
+      <div class="btn primary" id="apikey-modal-submit" onclick="submitApiKey()">Create Key</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const BASE = 'http://127.0.0.1:8000';
+const ADMIN_EMAIL = 'admin@university.ac.ae';
+const ADMIN_PASS  = 'Admin@1234';
+let token = null;
+let currentView = 'dashboard';
+
+const API_DOMAINS = {
+  'Health': { color:'#34d399', endpoints:[
+    {method:'GET', path:'/health/live',  desc:'Liveness probe'},
+    {method:'GET', path:'/health/ready', desc:'Readiness — checks DB + Redis'},
+    {method:'GET', path:'/health',       desc:'Azure APIM health probe'},
+    {method:'GET', path:'/metrics',      desc:'Prometheus metrics'},
+  ]},
+  'Authentication': { color:'#6c63ff', endpoints:[
+    {method:'POST', path:'/v1/auth/login',   desc:'Login → JWT access + refresh token'},
+    {method:'POST', path:'/v1/auth/refresh', desc:'Refresh access token'},
+  ]},
+  'Students': { color:'#4f8ef7', endpoints:[
+    {method:'GET',    path:'/v1/students',                          desc:'List (page, limit, sort, program, year, status)'},
+    {method:'POST',   path:'/v1/students',                          desc:'Create — first_name, last_name, email, date_of_birth, program_id, enrollment_year'},
+    {method:'GET',    path:'/v1/students/{student_id}',             desc:'Get by ID'},
+    {method:'PUT',    path:'/v1/students/{student_id}',             desc:'Full replace (StudentCreate body)'},
+    {method:'PATCH',  path:'/v1/students/{student_id}',             desc:'Partial update — first_name, last_name, email, status'},
+    {method:'DELETE', path:'/v1/students/{student_id}',             desc:'Delete (admin only)'},
+    {method:'GET',    path:'/v1/students/{student_id}/enrollments', desc:'Student course enrollments'},
+    {method:'GET',    path:'/v1/students/{student_id}/borrowings',  desc:'Student borrowing history'},
+  ]},
+  'Courses': { color:'#22d3ee', endpoints:[
+    {method:'GET',    path:'/v1/courses',                                        desc:'List (page, limit, program_id, semester, faculty_id, q)'},
+    {method:'POST',   path:'/v1/courses',                                        desc:'Create — code, title, program_id, credits, semester, faculty_id, max_capacity'},
+    {method:'GET',    path:'/v1/courses/{course_id}',                            desc:'Details + current_enrollment'},
+    {method:'PATCH',  path:'/v1/courses/{course_id}',                            desc:'Update — title, description, faculty_id, max_capacity'},
+    {method:'DELETE', path:'/v1/courses/{course_id}',                            desc:'Delete (admin)'},
+    {method:'GET',    path:'/v1/courses/{course_id}/students',                   desc:'Enrolled students'},
+    {method:'POST',   path:'/v1/courses/{course_id}/enrollments',                desc:'Enroll student — body: {student_id}'},
+    {method:'DELETE', path:'/v1/courses/{course_id}/enrollments/{enrollment_id}',desc:'Drop enrollment'},
+  ]},
+  'Books': { color:'#fbbf24', endpoints:[
+    {method:'GET',    path:'/v1/books',              desc:'List (page, limit, genre, available, author, q)'},
+    {method:'POST',   path:'/v1/books',              desc:'Add — title, author, isbn, genre, total_copies'},
+    {method:'GET',    path:'/v1/books/{book_id}',    desc:'Details + available_copies'},
+    {method:'PATCH',  path:'/v1/books/{book_id}',    desc:'Update — total_copies, genre, publisher'},
+    {method:'DELETE', path:'/v1/books/{book_id}',    desc:'Delete (admin)'},
+    {method:'GET',    path:'/v1/books/{book_id}/borrowings', desc:'Borrowings for this book'},
+  ]},
+  'Borrowings': { color:'#f59e0b', endpoints:[
+    {method:'GET',   path:'/v1/borrowings',                  desc:'List (student_id, book_id, status filter)'},
+    {method:'POST',  path:'/v1/borrowings',                  desc:'Create — book_id, student_id, due_date'},
+    {method:'GET',   path:'/v1/borrowings/{borrowing_id}',   desc:'Borrowing details'},
+    {method:'PATCH', path:'/v1/borrowings/{borrowing_id}',   desc:'Update status — active/returned/overdue/lost'},
+  ]},
+  'API Keys': { color:'#e879f9', endpoints:[
+    {method:'POST',   path:'/v1/api-keys',              desc:'Create key — name, role, expires_in_days'},
+    {method:'GET',    path:'/v1/api-keys',              desc:'List all keys (admin only)'},
+    {method:'PATCH',  path:'/v1/api-keys/{key_id}',    desc:'Update — name, is_active, expires_at'},
+    {method:'DELETE', path:'/v1/api-keys/{key_id}',    desc:'Revoke key permanently'},
+    {method:'POST',   path:'/v1/api-keys/{key_id}/rotate', desc:'Rotate — issues new hash, invalidates old'},
+  ]},
+  'UAE Government': { color:'#00d26a', endpoints:[
+    {method:'GET', path:'/v1/gov/students',          desc:'Student list in UAE API-first format'},
+    {method:'GET', path:'/v1/gov/enrollment-stats',  desc:'Enrollment stats — UAE MOEHE format'},
+    {method:'GET', path:'/v1/gov/programs',          desc:'Program catalog for govt reporting'},
+  ]},
+  'Library Assistant': { color:'#a78bfa', endpoints:[
+    {method:'POST', path:'/v1/assistant/chat',                   desc:'RAG AI chat — requires Azure OpenAI keys'},
+    {method:'POST', path:'/v1/assistant/chat/stream',            desc:'Streaming RAG response'},
+    {method:'GET',  path:'/v1/assistant/search',                 desc:'Semantic book search (pgvector)'},
+    {method:'POST', path:'/v1/assistant/books/{book_id}/index',  desc:'Index book into vector store'},
+  ]},
+};
+
+// ── NETWORK ──────────────────────────────────────────────────
+async function apiFetch(path, opts={}) {
+  const headers = {'Content-Type':'application/json'};
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(BASE + path, {headers, ...opts});
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({}));
+    const msg = Array.isArray(err?.detail) ? err.detail[0]?.msg : (err?.detail?.error?.message || err?.detail || `HTTP ${res.status}`);
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+async function login() {
+  setDebug('Logging in...');
+  const res = await fetch(BASE + '/v1/auth/login', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({email:ADMIN_EMAIL, password:ADMIN_PASS})
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({}));
+    throw new Error(err?.detail?.error?.message || 'Login failed');
+  }
+  const data = await res.json();
+  token = data.access_token;
+}
+
+async function testConnection(attempt=1) {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  dot.className='status-dot'; txt.textContent='checking...';
+  setDebug(`Attempt ${attempt} — GET /health/ready...`);
+  try {
+    // Use /health/live for the ping — it never checks dependencies, always fast
+    const r = await fetch(BASE+'/health/live', {signal:AbortSignal.timeout(8000)});
+    if (!r.ok) throw new Error(`/health/live → ${r.status}`);
+    await login();
+    dot.className='status-dot online'; txt.textContent='online';
+    setDebug('✓ authenticated', 'var(--green)');
+    loadCurrentView();
+  } catch(e) {
+    if (attempt < 4) {
+      // Retry up to 3 times with 2s delay — container may still be warming up
+      txt.textContent=`retrying (${attempt}/3)...`;
+      setDebug(`${e.message} — retrying in 2s...`, 'var(--amber)');
+      setTimeout(() => testConnection(attempt + 1), 2000);
+    } else {
+      dot.className='status-dot offline'; txt.textContent='offline';
+      setDebug(e.message, 'var(--red)');
+      setContent(`<div class="error-banner">⚠ ${e.message}</div><div class="empty">API is unreachable. Make sure Docker is running.<br><br><code style="font-family:var(--font)">docker compose up -d</code></div>`);
+    }
+  }
+}
+
+function setDebug(msg, color) {
+  const el = document.getElementById('debug-msg');
+  if (el) { el.textContent=msg; el.style.color=color||'var(--text3)'; }
+}
+
+// ── ROUTING ──────────────────────────────────────────────────
+function showView(view) {
+  currentView=view;
+  document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(el=>{
+    if(el.textContent.toLowerCase().trim().startsWith(view)) el.classList.add('active');
+  });
+  const titles={dashboard:'Dashboard',analytics:'Analytics',students:'Students',books:'Library — Books',borrowings:'Library — Borrowings',courses:'Courses',endpoints:'Endpoint Browser',apikeys:'API Keys',govdata:'UAE Gov Endpoints'};
+  const actions={dashboard:'+ New Student',analytics:'–',students:'+ New Student',books:'+ Add Book',borrowings:'+ New Borrowing',courses:'+ New Course',endpoints:'↗ Swagger UI',apikeys:'+ New API Key',govdata:'–'};
+  document.getElementById('page-title').textContent=titles[view]||view;
+  document.getElementById('primary-action').textContent=actions[view]||'–';
+  loadCurrentView();
+}
+
+function loadCurrentView() {
+  switch(currentView) {
+    case 'dashboard':  loadDashboard(); break;
+    case 'analytics':  renderAnalytics(); break;
+    case 'students':   loadStudents(1); break;
+    case 'books':      loadBooks(1); break;
+    case 'borrowings': loadBorrowings(1); break;
+    case 'courses':    loadCourses(1); break;
+    case 'endpoints':  renderEndpoints(''); break;
+    case 'apikeys':    loadApiKeys(); break;
+    case 'govdata':    loadGovData(); break;
+  }
+}
+
+// ── DASHBOARD ────────────────────────────────────────────────
+async function loadDashboard() {
+  setContent(`<div class="loading"><div class="spinner"></div> loading...</div>`);
+  try {
+    const [sRes, bRes, brRes, cRes] = await Promise.allSettled([
+      apiFetch('/v1/students?limit=1'),
+      apiFetch('/v1/books?limit=1'),
+      apiFetch('/v1/borrowings?limit=1&status=active'),
+      apiFetch('/v1/courses?limit=1'),
+    ]);
+    const total_students  = sRes.status==='fulfilled'  ? sRes.value.pagination?.total_items  || 0 : '–';
+    const total_books     = bRes.status==='fulfilled'  ? bRes.value.pagination?.total_items  || 0 : '–';
+    const active_borr     = brRes.status==='fulfilled' ? brRes.value.pagination?.total_items || 0 : '–';
+    const total_courses   = cRes.status==='fulfilled'  ? cRes.value.pagination?.total_items  || 0 : '–';
+
+    setBadge('students', total_students);
+    setBadge('books', total_books);
+    setBadge('borrowings', active_borr);
+    setBadge('courses', total_courses);
+
+    const recent = await apiFetch('/v1/students?limit=6&sort=created_at');
+    const recentStudents = recent.data || [];
+
+    const hourly=[120,98,60,40,55,130,280,520,740,860,920,1040,980,870,750,810,920,1100,1280,1050,880,640,420,220];
+    const maxH=Math.max(...hourly);
+    const bars=hourly.map((v,i)=>`<div class="chart-bar-wrap" title="${v} req at ${i}:00">
+      <div class="chart-bar-outer" style="height:60px"><div class="chart-bar-inner" style="height:${Math.round(v/maxH*100)}%;background:${i===20?'#4f8ef7':'rgba(79,142,247,.3)'}"></div></div>
+      ${i%4===0?`<div class="chart-bar-label">${i}h</div>`:'<div class="chart-bar-label"></div>'}
+    </div>`).join('');
+
+    setContent(`
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">TOTAL STUDENTS</div><div class="stat-value accent">${fmt(total_students)}</div><div class="stat-sub">registered</div></div>
+        <div class="stat-card"><div class="stat-label">LIBRARY BOOKS</div><div class="stat-value green">${fmt(total_books)}</div><div class="stat-sub">unique titles</div></div>
+        <div class="stat-card"><div class="stat-label">ACTIVE BORROWINGS</div><div class="stat-value amber">${fmt(active_borr)}</div><div class="stat-sub">checked out now</div></div>
+        <div class="stat-card"><div class="stat-label">COURSES</div><div class="stat-value teal">${fmt(total_courses)}</div><div class="stat-sub">this semester</div></div>
+      </div>
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-header"><div class="card-title">Request volume — 24h</div><span style="font-family:var(--mono);font-size:10px;color:var(--text3)">simulated — no analytics router</span></div>
+          <div style="padding:16px"><div style="display:flex;align-items:flex-end;gap:4px;height:70px">${bars}</div></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Quick access</div></div>
+          <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
+            <div class="btn" onclick="showView('students')" style="justify-content:center">◉ Students</div>
+            <div class="btn" onclick="showView('books')" style="justify-content:center">◫ Library Books</div>
+            <div class="btn" onclick="showView('borrowings')" style="justify-content:center">◇ Borrowings</div>
+            <div class="btn" onclick="showView('courses')" style="justify-content:center">⊞ Courses</div>
+            <a href="${BASE}/docs" target="_blank" style="text-decoration:none;display:block"><div class="btn" style="justify-content:center;width:100%">↗ Swagger UI</div></a>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Recent Students</div>
+          <div class="btn" onclick="showView('students')" style="padding:4px 9px;font-size:11px">view all →</div>
+        </div>
+        <table class="table">
+          <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Year</th></tr></thead>
+          <tbody>${recentStudents.map(s=>{
+            const initials=`${s.first_name[0]}${s.last_name[0]}`.toUpperCase();
+            return `<tr>
+              <td><div style="display:flex;align-items:center;gap:8px">
+                <div class="avatar">${initials}</div>
+                <span style="font-size:13px;color:var(--text)">${s.first_name} ${s.last_name}</span>
+              </div></td>
+              <td style="font-family:var(--mono);font-size:11px">${s.email}</td>
+              <td><span class="badge ${s.status}">${s.status}</span></td>
+              <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${s.enrollment_year}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>
+    `);
+  } catch(e) {
+    setContent(`<div class="error-banner">⚠ ${e.message}</div>`);
+  }
+}
+
+// ── STUDENTS ─────────────────────────────────────────────────
+async function loadStudents(page=1, filters={}) {
+  setContent(`<div class="loading"><div class="spinner"></div> loading students...</div>`);
+  try {
+    const p = new URLSearchParams({page, limit:25, sort:'last_name'});
+    Object.entries(filters).forEach(([k,v])=>{ if(v!==undefined&&v!=='') p.set(k,v); });
+    const res = await apiFetch(`/v1/students?${p}`);
+    const students = res.data || [];
+    const pg = res.pagination || {};
+    setBadge('students', pg.total_items || students.length);
+    window._studentsData = students;
+    setContent(`
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <div class="search-wrap" style="flex:1"><span class="search-icon">⌕</span>
+          <input class="input" id="s-search" placeholder="search name or email (client-side)..." oninput="clientSearch(this.value,'students-tbody',window._studentsData,studentRow)" />
+        </div>
+        <select class="input" style="width:150px" onchange="loadStudents(1,{status:this.value})">
+          <option value="">All Status</option>
+          <option value="active" ${filters.status==='active'?'selected':''}>Active</option>
+          <option value="inactive" ${filters.status==='inactive'?'selected':''}>Inactive</option>
+          <option value="graduated" ${filters.status==='graduated'?'selected':''}>Graduated</option>
+          <option value="suspended" ${filters.status==='suspended'?'selected':''}>Suspended</option>
+        </select>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">${pg.total_items||students.length} students</div>
+          <div class="btn primary" onclick="openStudentModal()" style="padding:5px 10px;font-size:11px">+ New Student</div>
+        </div>
+        <table class="table">
+          <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Year</th><th>Created</th><th>Actions</th></tr></thead>
+          <tbody id="students-tbody">${students.map(s=>studentRow(s)).join('')}</tbody>
+        </table>
+        ${pg.total_pages>1?paginationHtml(pg.page,pg.total_pages,'loadStudents'):''}
+      </div>
+    `);
+  } catch(e) { setContent(`<div class="error-banner">⚠ ${e.message}</div>`); }
+}
+
+function studentRow(s) {
+  const initials=`${(s.first_name||'?')[0]}${(s.last_name||'?')[0]}`.toUpperCase();
+  const created=s.created_at?new Date(s.created_at).toLocaleDateString('en-AE',{day:'2-digit',month:'short',year:'numeric'}):'—';
+  return `<tr>
+    <td><div style="display:flex;align-items:center;gap:8px">
+      <div class="avatar">${initials}</div>
+      <span style="font-size:13px;color:var(--text);font-weight:500">${s.first_name} ${s.last_name}</span>
+    </div></td>
+    <td style="font-family:var(--mono);font-size:11px">${s.email}</td>
+    <td><span class="badge ${s.status}">${s.status}</span></td>
+    <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${s.enrollment_year}</td>
+    <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${created}</td>
+    <td><div style="display:flex;gap:5px">
+      <div class="btn" style="padding:3px 8px;font-size:11px" onclick="openStudentModal(${JSON.stringify(s).replace(/"/g,'&quot;')})">edit</div>
+      <div class="btn danger" style="padding:3px 8px;font-size:11px" onclick="deleteStudent('${s.id}','${s.first_name} ${s.last_name}')">delete</div>
+    </div></td>
+  </tr>`;
+}
+
+function openStudentModal(student=null) {
+  const isEdit=!!student;
+  document.getElementById('student-modal-title').textContent=isEdit?'Edit Student':'Create Student';
+  document.getElementById('sf-first').value  =student?.first_name||'';
+  document.getElementById('sf-last').value   =student?.last_name||'';
+  document.getElementById('sf-email').value  =student?.email||'';
+  document.getElementById('sf-dob').value    =student?.date_of_birth||'';
+  document.getElementById('sf-program').value=student?.program_id||'';
+  document.getElementById('sf-year').value   =student?.enrollment_year||new Date().getFullYear();
+  document.getElementById('sf-status').value =student?.status||'active';
+  // On edit: dob, program, year are not in StudentUpdate so disable them
+  document.getElementById('sf-dob').disabled    =isEdit;
+  document.getElementById('sf-program').disabled=isEdit;
+  document.getElementById('sf-year').disabled   =isEdit;
+  document.getElementById('sf-email').disabled  =false;
+  document.getElementById('student-modal-error').style.display='none';
+  const btn=document.getElementById('student-modal-submit');
+  btn.textContent=isEdit?'Save Changes':'Create Student';
+  btn.onclick=isEdit?()=>submitStudent(student.id):()=>submitStudent(null);
+  document.getElementById('student-modal').classList.add('show');
+}
+
+async function submitStudent(editId=null) {
+  const btn=document.getElementById('student-modal-submit');
+  const errEl=document.getElementById('student-modal-error');
+  errEl.style.display='none';
+  btn.textContent=editId?'Saving...':'Creating...'; btn.style.opacity='.7';
+  try {
+    if (editId) {
+      // PATCH — StudentUpdate only allows: first_name, last_name, email, status
+      const patch = {};
+      const fn = document.getElementById('sf-first').value.trim();
+      const ln = document.getElementById('sf-last').value.trim();
+      const em = document.getElementById('sf-email').value.trim();
+      const st = document.getElementById('sf-status').value;
+      if (fn) patch.first_name = fn;
+      if (ln) patch.last_name  = ln;
+      if (em) patch.email      = em;
+      if (st) patch.status     = st;
+      await apiFetch(`/v1/students/${editId}`, {method:'PATCH', body:JSON.stringify(patch)});
+    } else {
+      // POST — StudentCreate: first_name, last_name, email, date_of_birth, program_id, enrollment_year, status
+      const body = {
+        first_name:      document.getElementById('sf-first').value.trim(),
+        last_name:       document.getElementById('sf-last').value.trim(),
+        email:           document.getElementById('sf-email').value.trim(),
+        date_of_birth:   document.getElementById('sf-dob').value,
+        program_id:      document.getElementById('sf-program').value.trim(),
+        enrollment_year: parseInt(document.getElementById('sf-year').value),
+        status:          document.getElementById('sf-status').value,
+      };
+      // Validate required fields client-side before hitting API
+      const missing = ['first_name','last_name','email','date_of_birth','program_id','enrollment_year']
+        .filter(k => !body[k] || body[k] === 'NaN');
+      if (missing.length) throw new Error(`Missing required fields: ${missing.join(', ')}`);
+      await apiFetch('/v1/students', {method:'POST', body:JSON.stringify(body)});
+    }
+    closeModal('student-modal');
+    loadStudents(1);
+  } catch(e) {
+    document.getElementById('student-modal-error-msg').textContent=e.message;
+    errEl.style.display='flex';
+    btn.textContent=editId?'Save Changes':'Create Student'; btn.style.opacity='1';
+  }
+}
+
+async function deleteStudent(id, name) {
+  if (!confirm(`Delete student "${name}"?\nThis cannot be undone.`)) return;
+  try { await apiFetch(`/v1/students/${id}`,{method:'DELETE'}); loadStudents(1); }
+  catch(e) { alert('Delete failed: '+e.message); }
+}
+
+// ── BOOKS ────────────────────────────────────────────────────
+async function loadBooks(page=1, filters={}) {
+  setContent(`<div class="loading"><div class="spinner"></div> loading books...</div>`);
+  try {
+    const p=new URLSearchParams({page,limit:25});
+    Object.entries(filters).forEach(([k,v])=>{ if(v!==undefined&&v!=='') p.set(k,v); });
+    const res=await apiFetch(`/v1/books?${p}`);
+    const books=res.data||[];
+    const pg=res.pagination||{};
+    setBadge('books', pg.total_items||books.length);
+    setContent(`
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <div class="search-wrap" style="flex:1"><span class="search-icon">⌕</span>
+          <input class="input" placeholder="search title or author (server-side)..." onchange="loadBooks(1,{q:this.value||undefined})" />
+        </div>
+        <select class="input" style="width:160px" onchange="loadBooks(1,{available:this.value||undefined})">
+          <option value="">All books</option>
+          <option value="true">Available only</option>
+        </select>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">${pg.total_items||books.length} books</div>
+          <div class="btn primary" onclick="openBookModal()" style="padding:5px 10px;font-size:11px">+ Add Book</div>
+        </div>
+        <table class="table">
+          <thead><tr><th>Title</th><th>Author</th><th>Genre</th><th>Total</th><th>Available</th><th>Actions</th></tr></thead>
+          <tbody>${books.map(b=>`<tr>
+            <td><div style="font-size:13px;color:var(--text);font-weight:500">${b.title}</div><div style="font-family:var(--mono);font-size:10px;color:var(--text3)">${b.isbn}</div></td>
+            <td style="font-size:12px">${b.author}</td>
+            <td><span class="domain-tag">${b.genre}</span></td>
+            <td style="font-family:var(--mono);font-size:12px;text-align:center">${b.total_copies}</td>
+            <td><span class="badge ${(b.available_copies||0)>0?'active':'inactive'}">${b.available_copies??'–'}</span></td>
+            <td><div style="display:flex;gap:5px">
+              <div class="btn" style="padding:3px 8px;font-size:11px" onclick="openBookModal(${JSON.stringify(b).replace(/"/g,'&quot;')})">edit</div>
+              <div class="btn danger" style="padding:3px 8px;font-size:11px" onclick="deleteBook('${b.id}','${b.title.replace(/'/g,"\\'")}')">delete</div>
+            </div></td>
+          </tr>`).join('')}</tbody>
+        </table>
+        ${pg.total_pages>1?paginationHtml(pg.page,pg.total_pages,'loadBooks'):''}
+      </div>
+    `);
+  } catch(e) { setContent(`<div class="error-banner">⚠ ${e.message}</div>`); }
+}
+
+function openBookModal(book=null) {
+  const isEdit=!!book;
+  document.getElementById('book-modal-title').textContent=isEdit?'Edit Book':'Add Book';
+  document.getElementById('bf-title').value    =book?.title||'';
+  document.getElementById('bf-author').value   =book?.author||'';
+  document.getElementById('bf-isbn').value     =book?.isbn||'';
+  document.getElementById('bf-genre').value    =book?.genre||'';
+  document.getElementById('bf-copies').value   =book?.total_copies||1;
+  document.getElementById('bf-year').value     =book?.published_year||'';
+  document.getElementById('bf-publisher').value=book?.publisher||'';
+  // PATCH only allows: total_copies, genre, publisher
+  document.getElementById('bf-title').disabled =isEdit;
+  document.getElementById('bf-author').disabled=isEdit;
+  document.getElementById('bf-isbn').disabled  =isEdit;
+  document.getElementById('book-modal-error').style.display='none';
+  const btn=document.getElementById('book-modal-submit');
+  btn.textContent=isEdit?'Save Changes':'Add Book';
+  btn.onclick=isEdit?()=>submitBook(book.id):()=>submitBook(null);
+  document.getElementById('book-modal').classList.add('show');
+}
+
+async function submitBook(editId=null) {
+  const btn=document.getElementById('book-modal-submit');
+  const errEl=document.getElementById('book-modal-error');
+  errEl.style.display='none';
+  btn.textContent=editId?'Saving...':'Adding...'; btn.style.opacity='.7';
+  try {
+    if (editId) {
+      await apiFetch(`/v1/books/${editId}`,{method:'PATCH',body:JSON.stringify({
+        total_copies: parseInt(document.getElementById('bf-copies').value),
+        genre:     document.getElementById('bf-genre').value.trim()||undefined,
+        publisher: document.getElementById('bf-publisher').value.trim()||undefined,
+      })});
+    } else {
+      const py=parseInt(document.getElementById('bf-year').value);
+      await apiFetch('/v1/books',{method:'POST',body:JSON.stringify({
+        title:        document.getElementById('bf-title').value.trim(),
+        author:       document.getElementById('bf-author').value.trim(),
+        isbn:         document.getElementById('bf-isbn').value.trim(),
+        genre:        document.getElementById('bf-genre').value.trim(),
+        total_copies: parseInt(document.getElementById('bf-copies').value),
+        published_year: isNaN(py)?undefined:py,
+        publisher:    document.getElementById('bf-publisher').value.trim()||undefined,
+      })});
+    }
+    closeModal('book-modal');
+    loadBooks(1);
+  } catch(e) {
+    document.getElementById('book-modal-error-msg').textContent=e.message;
+    errEl.style.display='flex';
+    btn.textContent=editId?'Save Changes':'Add Book'; btn.style.opacity='1';
+  }
+}
+
+async function deleteBook(id, title) {
+  if (!confirm(`Delete book "${title}"?`)) return;
+  try { await apiFetch(`/v1/books/${id}`,{method:'DELETE'}); loadBooks(1); }
+  catch(e) { alert('Delete failed: '+e.message); }
+}
+
+// ── BORROWINGS ───────────────────────────────────────────────
+async function loadBorrowings(page=1, filters={}) {
+  setContent(`<div class="loading"><div class="spinner"></div> loading borrowings...</div>`);
+  try {
+    const p=new URLSearchParams({page,limit:25});
+    Object.entries(filters).forEach(([k,v])=>{ if(v!==undefined&&v!=='') p.set(k,v); });
+    const res=await apiFetch(`/v1/borrowings?${p}`);
+    const borr=res.data||[];
+    const pg=res.pagination||{};
+    setBadge('borrowings', pg.total_items||borr.length);
+    setContent(`
+      <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center">
+        <select class="input" style="width:160px" onchange="loadBorrowings(1,{status:this.value})">
+          <option value="">All Status</option>
+          <option value="active" ${filters.status==='active'?'selected':''}>Active</option>
+          <option value="returned" ${filters.status==='returned'?'selected':''}>Returned</option>
+          <option value="overdue" ${filters.status==='overdue'?'selected':''}>Overdue</option>
+          <option value="lost" ${filters.status==='lost'?'selected':''}>Lost</option>
+        </select>
+        <div style="flex:1"></div>
+        <div class="btn primary" onclick="openBorrowModal()">+ New Borrowing</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">${pg.total_items||borr.length} borrowings</div></div>
+        <table class="table">
+          <thead><tr><th>ID</th><th>Student</th><th>Book</th><th>Due Date</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody>${borr.map(b=>{
+            const due=b.due_date?new Date(b.due_date).toLocaleDateString('en-AE',{day:'2-digit',month:'short',year:'numeric'}):'—';
+            const isOverdue=b.status==='active'&&new Date(b.due_date)<new Date();
+            return `<tr>
+              <td style="font-family:var(--mono);font-size:10px;color:var(--text3)">${b.id.slice(0,8)}…</td>
+              <td style="font-family:var(--mono);font-size:10px;color:var(--text3)">${b.student_id.slice(0,8)}…</td>
+              <td style="font-family:var(--mono);font-size:10px;color:var(--text3)">${b.book_id.slice(0,8)}…</td>
+              <td style="font-family:var(--mono);font-size:11px;color:${isOverdue?'var(--red)':'var(--text3)'}">${due}${isOverdue?' ⚠':''}</td>
+              <td><span class="badge ${b.status}">${b.status}</span></td>
+              <td><div style="display:flex;gap:5px">
+                ${b.status==='active'?`<div class="btn success" style="padding:3px 8px;font-size:11px" onclick="updateBorrowStatus('${b.id}','returned')">↩ return</div>`:''}
+                ${b.status==='active'?`<div class="btn danger" style="padding:3px 8px;font-size:11px" onclick="updateBorrowStatus('${b.id}','lost')">lost</div>`:''}
+              </div></td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+        ${pg.total_pages>1?paginationHtml(pg.page,pg.total_pages,'loadBorrowings'):''}
+      </div>
+    `);
+  } catch(e) { setContent(`<div class="error-banner">⚠ ${e.message}</div>`); }
+}
+
+async function openBorrowModal() {
+  const d=new Date(); d.setDate(d.getDate()+14);
+  document.getElementById('brf-due').value=d.toISOString().split('T')[0];
+  document.getElementById('borrow-modal-error').style.display='none';
+  document.getElementById('borrow-modal').classList.add('show');
+
+  // Load students dropdown
+  const sEl = document.getElementById('brf-student');
+  const bEl = document.getElementById('brf-book');
+  sEl.innerHTML = '<option value="">Loading...</option>';
+  bEl.innerHTML = '<option value="">Loading...</option>';
+
+  try {
+    // Load all students (up to 100)
+    const sRes = await apiFetch('/v1/students?limit=100&sort=last_name');
+    const students = sRes.data || [];
+    sEl.innerHTML = '<option value="">Select student...</option>' +
+      students.map(s => `<option value="${s.id}">${s.first_name} ${s.last_name} — ${s.email}</option>`).join('');
+  } catch(e) {
+    sEl.innerHTML = '<option value="">Failed to load students</option>';
+  }
+
+  try {
+    // Load available books only
+    const bRes = await apiFetch('/v1/books?limit=100&available=true');
+    const books = bRes.data || [];
+    bEl.innerHTML = '<option value="">Select book...</option>' +
+      books.map(b => `<option value="${b.id}">${b.title} — ${b.author} (${b.available_copies} available)</option>`).join('');
+  } catch(e) {
+    bEl.innerHTML = '<option value="">Failed to load books</option>';
+  }
+}
+
+async function submitBorrowing() {
+  const errEl=document.getElementById('borrow-modal-error');
+  errEl.style.display='none';
+  const student_id = document.getElementById('brf-student').value;
+  const book_id    = document.getElementById('brf-book').value;
+  const due_date   = document.getElementById('brf-due').value;
+  if (!student_id) { showBorrowError('Please select a student'); return; }
+  if (!book_id)    { showBorrowError('Please select a book'); return; }
+  if (!due_date)   { showBorrowError('Please set a due date'); return; }
+  try {
+    await apiFetch('/v1/borrowings',{method:'POST',body:JSON.stringify({book_id, student_id, due_date})});
+    closeModal('borrow-modal');
+    loadBorrowings(1);
+  } catch(e) {
+    showBorrowError(e.message);
+  }
+}
+
+function showBorrowError(msg) {
+  document.getElementById('borrow-modal-error-msg').textContent=msg;
+  document.getElementById('borrow-modal-error').style.display='flex';
+}
+
+async function updateBorrowStatus(id, status) {
+  const label={returned:'mark as returned',lost:'mark as lost'}[status]||status;
+  if (!confirm(`Are you sure you want to ${label}?`)) return;
+  try { await apiFetch(`/v1/borrowings/${id}`,{method:'PATCH',body:JSON.stringify({status})}); loadBorrowings(1); }
+  catch(e) { alert('Failed: '+e.message); }
+}
+
+// ── COURSES ──────────────────────────────────────────────────
+async function loadCourses(page=1, filters={}) {
+  setContent(`<div class="loading"><div class="spinner"></div> loading courses...</div>`);
+  try {
+    const p=new URLSearchParams({page,limit:25});
+    Object.entries(filters).forEach(([k,v])=>{ if(v!==undefined&&v!=='') p.set(k,v); });
+    const res=await apiFetch(`/v1/courses?${p}`);
+    const courses=res.data||[];
+    const pg=res.pagination||{};
+    setBadge('courses', pg.total_items||courses.length);
+    setContent(`
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <div class="search-wrap" style="flex:1"><span class="search-icon">⌕</span>
+          <input class="input" placeholder="search courses (server-side)..." onchange="loadCourses(1,{q:this.value||undefined})" />
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">${pg.total_items||courses.length} courses</div></div>
+        <table class="table">
+          <thead><tr><th>Code</th><th>Title</th><th>Semester</th><th>Credits</th><th>Capacity</th><th>Actions</th></tr></thead>
+          <tbody>${courses.map(c=>{
+            const pct=Math.min(100,Math.round((c.current_enrollment/c.max_capacity)*100));
+            const barColor=pct>80?'var(--red)':'var(--accent)';
+            return `<tr>
+              <td><span class="domain-tag">${c.code}</span></td>
+              <td style="font-size:13px;color:var(--text)">${c.title}</td>
+              <td style="font-family:var(--mono);font-size:11px">${c.semester}</td>
+              <td style="font-family:var(--mono);font-size:12px;text-align:center">${c.credits}</td>
+              <td style="min-width:120px">
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div style="flex:1;height:4px;background:var(--surface3);border-radius:2px">
+                    <div style="height:4px;background:${barColor};border-radius:2px;width:${pct}%"></div>
+                  </div>
+                  <span style="font-family:var(--mono);font-size:10px;color:var(--text3);flex-shrink:0">${c.current_enrollment}/${c.max_capacity}</span>
+                </div>
+              </td>
+              <td><div class="btn danger" style="padding:3px 8px;font-size:11px" onclick="deleteCourse('${c.id}','${c.code}')">delete</div></td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+        ${pg.total_pages>1?paginationHtml(pg.page,pg.total_pages,'loadCourses'):''}
+      </div>
+    `);
+  } catch(e) { setContent(`<div class="error-banner">⚠ ${e.message}</div>`); }
+}
+
+async function deleteCourse(id, code) {
+  if (!confirm(`Delete course ${code}?`)) return;
+  try { await apiFetch(`/v1/courses/${id}`,{method:'DELETE'}); loadCourses(1); }
+  catch(e) { alert('Delete failed: '+e.message); }
+}
+
+// ── ANALYTICS ────────────────────────────────────────────────
+async function renderAnalytics() {
+  setContent(`<div class="loading"><div class="spinner"></div> loading analytics...</div>`);
+  try {
+    // Pull real stats from your actual working endpoints — no /metrics
+    const [sRes, bRes, brRes, cRes, brActiveRes, brOverdueRes, brReturnedRes] = await Promise.allSettled([
+      apiFetch('/v1/students?limit=1'),
+      apiFetch('/v1/books?limit=1'),
+      apiFetch('/v1/borrowings?limit=1'),
+      apiFetch('/v1/courses?limit=1'),
+      apiFetch('/v1/borrowings?limit=1&status=active'),
+      apiFetch('/v1/borrowings?limit=1&status=overdue'),
+      apiFetch('/v1/borrowings?limit=1&status=returned'),
+    ]);
+
+    const totalStudents  = sRes.status==='fulfilled'        ? sRes.value.pagination?.total_items        || 0 : 0;
+    const totalBooks     = bRes.status==='fulfilled'        ? bRes.value.pagination?.total_items        || 0 : 0;
+    const totalBorr      = brRes.status==='fulfilled'       ? brRes.value.pagination?.total_items       || 0 : 0;
+    const totalCourses   = cRes.status==='fulfilled'        ? cRes.value.pagination?.total_items        || 0 : 0;
+    const activeBorr     = brActiveRes.status==='fulfilled' ? brActiveRes.value.pagination?.total_items || 0 : 0;
+    const overdueBorr    = brOverdueRes.status==='fulfilled'? brOverdueRes.value.pagination?.total_items|| 0 : 0;
+    const returnedBorr   = brReturnedRes.status==='fulfilled'?brReturnedRes.value.pagination?.total_items||0 : 0;
+
+    // Student status breakdown
+    const [sActive, sInactive, sGrad, sSusp] = await Promise.allSettled([
+      apiFetch('/v1/students?limit=1&status=active'),
+      apiFetch('/v1/students?limit=1&status=inactive'),
+      apiFetch('/v1/students?limit=1&status=graduated'),
+      apiFetch('/v1/students?limit=1&status=suspended'),
+    ]);
+    const activeStudents   = sActive.status==='fulfilled'  ? sActive.value.pagination?.total_items  || 0 : 0;
+    const inactiveStudents = sInactive.status==='fulfilled' ? sInactive.value.pagination?.total_items || 0 : 0;
+    const gradStudents     = sGrad.status==='fulfilled'    ? sGrad.value.pagination?.total_items    || 0 : 0;
+    const suspStudents     = sSusp.status==='fulfilled'    ? sSusp.value.pagination?.total_items    || 0 : 0;
+
+    // Available books
+    const bAvail = await apiFetch('/v1/books?limit=1&available=true').catch(()=>({pagination:{total_items:0}}));
+    const availableBooks = bAvail.pagination?.total_items || 0;
+
+    const borrowRate = totalStudents > 0 ? ((activeBorr/totalStudents)*100).toFixed(1) : '0.0';
+    const overdueRate = totalBorr > 0 ? ((overdueBorr/totalBorr)*100).toFixed(1) : '0.0';
+
+    setContent(`
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">TOTAL STUDENTS</div><div class="stat-value accent">${totalStudents.toLocaleString()}</div><div class="stat-sub">${activeStudents} active</div></div>
+        <div class="stat-card"><div class="stat-label">LIBRARY BOOKS</div><div class="stat-value green">${totalBooks.toLocaleString()}</div><div class="stat-sub">${availableBooks} available now</div></div>
+        <div class="stat-card"><div class="stat-label">ACTIVE BORROWINGS</div><div class="stat-value amber">${activeBorr.toLocaleString()}</div><div class="stat-sub">${overdueBorr} overdue ⚠</div></div>
+        <div class="stat-card"><div class="stat-label">TOTAL COURSES</div><div class="stat-value teal">${totalCourses.toLocaleString()}</div><div class="stat-sub">${totalStudents} students enrolled</div></div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:16px">
+        <div class="card">
+          <div class="card-header"><div class="card-title">Student Status Breakdown</div></div>
+          <div class="card-body">
+            ${[
+              ['active',    activeStudents,   totalStudents, 'var(--green)'],
+              ['inactive',  inactiveStudents, totalStudents, 'var(--text3)'],
+              ['graduated', gradStudents,     totalStudents, 'var(--accent)'],
+              ['suspended', suspStudents,     totalStudents, 'var(--red)'],
+            ].map(([label, count, total, color]) => {
+              const pct = total > 0 ? Math.round((count/total)*100) : 0;
+              return `<div style="margin-bottom:12px">
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                  <span class="badge ${label}">${label}</span>
+                  <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">${count.toLocaleString()} (${pct}%)</span>
+                </div>
+                <div style="height:5px;background:var(--surface3);border-radius:3px">
+                  <div style="height:5px;width:${pct}%;background:${color};border-radius:3px"></div>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="card-title">Borrowings Breakdown</div></div>
+          <div class="card-body">
+            ${[
+              ['active',   activeBorr,   totalBorr, 'var(--amber)'],
+              ['returned', returnedBorr, totalBorr, 'var(--green)'],
+              ['overdue',  overdueBorr,  totalBorr, 'var(--red)'],
+            ].map(([label, count, total, color]) => {
+              const pct = total > 0 ? Math.round((count/total)*100) : 0;
+              return `<div style="margin-bottom:12px">
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                  <span class="badge ${label}">${label}</span>
+                  <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">${count.toLocaleString()} (${pct}%)</span>
+                </div>
+                <div style="height:5px;background:var(--surface3);border-radius:3px">
+                  <div style="height:5px;width:${pct}%;background:${color};border-radius:3px"></div>
+                </div>
+              </div>`;
+            }).join('')}
+            <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+              <div style="display:flex;justify-content:space-between">
+                <span style="font-size:12px;color:var(--text2)">Borrow rate</span>
+                <span style="font-family:var(--mono);font-size:12px;color:var(--accent)">${borrowRate}%</span>
+              </div>
+              <div style="font-size:11px;color:var(--text3);margin-top:2px">of students currently have a book</div>
+              <div style="display:flex;justify-content:space-between;margin-top:8px">
+                <span style="font-size:12px;color:var(--text2)">Overdue rate</span>
+                <span style="font-family:var(--mono);font-size:12px;color:${parseFloat(overdueRate)>5?'var(--red)':'var(--green)'}">${overdueRate}%</span>
+              </div>
+              <div style="font-size:11px;color:var(--text3);margin-top:2px">of all borrowings are overdue</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><div class="card-title">Library availability</div></div>
+          <div class="card-body">
+            <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
+              <div style="text-align:center">
+                <div style="font-size:32px;font-weight:700;color:var(--green)">${availableBooks}</div>
+                <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">available</div>
+              </div>
+              <div style="flex:1;height:8px;background:var(--surface3);border-radius:4px">
+                <div style="height:8px;background:var(--green);border-radius:4px;width:${totalBooks>0?Math.round((availableBooks/totalBooks)*100):0}%"></div>
+              </div>
+              <div style="text-align:center">
+                <div style="font-size:32px;font-weight:700;color:var(--text2)">${totalBooks}</div>
+                <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">total</div>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border)">
+              <span style="font-size:12px;color:var(--text2)">Currently borrowed</span>
+              <span style="font-family:var(--mono);font-size:12px;color:var(--amber)">${activeBorr}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border)">
+              <span style="font-size:12px;color:var(--text2)">Overdue returns</span>
+              <span style="font-family:var(--mono);font-size:12px;color:var(--red)">${overdueBorr}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="card-title">Quick summary</div></div>
+          <div class="card-body">
+            ${[
+              ['Total students',   totalStudents,   ''],
+              ['Active students',  activeStudents,  ''],
+              ['Graduated',        gradStudents,    ''],
+              ['Suspended',        suspStudents,    ''],
+              ['Total books',      totalBooks,      ''],
+              ['Available books',  availableBooks,  ''],
+              ['Total borrowings', totalBorr,       ''],
+              ['Active borrowings',activeBorr,      ''],
+              ['Overdue',          overdueBorr,     ''],
+              ['Total courses',    totalCourses,    ''],
+            ].map(([label, val]) => `
+              <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+                <span style="font-size:12px;color:var(--text2)">${label}</span>
+                <span style="font-family:var(--mono);font-size:12px;color:var(--text)">${val.toLocaleString()}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `);
+  } catch(e) {
+    setContent(`<div class="error-banner">⚠ Failed to load analytics: ${e.message}</div>`);
+  }
+}
+
+// ── ENDPOINTS ────────────────────────────────────────────────
+function renderEndpoints(search) {
+  const q=search.toLowerCase();
+  let total=0, html='';
+  html+=`<div class="search-wrap" style="margin-bottom:16px">
+    <span class="search-icon">⌕</span>
+    <input class="input" placeholder="search paths, methods, descriptions..." oninput="renderEndpoints(this.value)" value="${search}" />
+  </div>`;
+  Object.entries(API_DOMAINS).forEach(([domain,data])=>{
+    const filtered=data.endpoints.filter(ep=>!q||ep.path.toLowerCase().includes(q)||ep.method.toLowerCase().includes(q)||ep.desc.toLowerCase().includes(q)||domain.toLowerCase().includes(q));
+    if(!filtered.length) return;
+    total+=filtered.length;
+    html+=`<div class="endpoint-group">
+      <div class="endpoint-group-header">
+        <div style="width:8px;height:8px;border-radius:50%;background:${data.color};flex-shrink:0"></div>
+        <div style="font-size:13px;font-weight:600;flex:1">${domain}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">${filtered.length} endpoints</div>
+      </div>
+      <div style="padding:4px 0 0">${filtered.map(ep=>{
+        const pathHtml=ep.path.replace(/\{([^}]+)\}/g,'<span class="param">{$1}</span>');
+        return `<div class="endpoint-row">
+          <span class="badge ${ep.method.toLowerCase()}" style="min-width:52px;justify-content:center">${ep.method}</span>
+          <span class="endpoint-path">${pathHtml}</span>
+          <span class="endpoint-desc">${ep.desc}</span>
+        </div>`;
+      }).join('')}</div>
+    </div>`;
+  });
+  if(!total) html+=`<div class="empty">no endpoints match "${search}"</div>`;
+  setContent(`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <span style="font-family:var(--mono);font-size:12px;color:var(--text3)">${total} endpoints across ${Object.keys(API_DOMAINS).length} domains</span>
+      <div style="display:flex;gap:12px">
+        <a href="${BASE}/docs" target="_blank" style="font-family:var(--mono);font-size:11px;color:var(--accent);text-decoration:none">↗ Swagger UI</a>
+        <a href="${BASE}/redoc" target="_blank" style="font-family:var(--mono);font-size:11px;color:var(--text3);text-decoration:none">↗ ReDoc</a>
+        <a href="${BASE}/openapi.json" target="_blank" style="font-family:var(--mono);font-size:11px;color:var(--text3);text-decoration:none">↗ OpenAPI JSON</a>
+      </div>
+    </div>
+    ${html}
+  `);
+}
+
+// ── UTILS ────────────────────────────────────────────────────
+function paginationHtml(page, totalPages, fn) {
+  const pages=[]; for(let i=1;i<=Math.min(totalPages,7);i++) pages.push(i);
+  return `<div class="pagination">
+    <span class="page-info">Page ${page} of ${totalPages}</span>
+    ${page>1?`<div class="page-btn" onclick="${fn}(${page-1})">‹</div>`:''}
+    ${pages.map(p=>`<div class="page-btn ${p===page?'active':''}" onclick="${fn}(${p})">${p}</div>`).join('')}
+    ${page<totalPages?`<div class="page-btn" onclick="${fn}(${page+1})">›</div>`:''}
+  </div>`;
+}
+
+function clientSearch(q, tbodyId, data, rowFn) {
+  const ql=q.toLowerCase();
+  const filtered=ql?data.filter(s=>
+    `${s.first_name||''} ${s.last_name||''}`.toLowerCase().includes(ql)||
+    (s.email||'').toLowerCase().includes(ql)||
+    (s.title||'').toLowerCase().includes(ql)||
+    (s.author||'').toLowerCase().includes(ql)
+  ):data;
+  const el=document.getElementById(tbodyId);
+  if(el) el.innerHTML=filtered.map(rowFn).join('');
+}
+
+function setBadge(name, val) {
+  const el=document.getElementById(`badge-${name}`);
+  if(el) el.textContent=typeof val==='number'?val.toLocaleString():val;
+}
+
+function fmt(v) { return typeof v==='number'?v.toLocaleString():v; }
+function setContent(html) { document.getElementById('content').innerHTML=html; }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+// ── COURSES MODAL ───────────────────────────────────────────
+async function openCourseModal() {
+  document.getElementById('course-modal-title').textContent = 'Create Course';
+  ['cf-code','cf-title','cf-desc'].forEach(id => document.getElementById(id).value='');
+  document.getElementById('cf-credits').value  = '3';
+  document.getElementById('cf-capacity').value = '30';
+  document.getElementById('course-modal-error').style.display='none';
+  document.getElementById('course-modal').classList.add('show');
+
+  // Load program_id and faculty_id options from existing courses
+  const programSel = document.getElementById('cf-program');
+  const facultySel = document.getElementById('cf-faculty');
+  programSel.innerHTML = '<option value="">Loading...</option>';
+  facultySel.innerHTML = '<option value="">Loading...</option>';
+
+  try {
+    const res = await apiFetch('/v1/courses?limit=100');
+    const courses = res.data || [];
+
+    // Extract unique programs and faculty from existing courses
+    const programs = {};
+    const faculty  = {};
+    courses.forEach(c => {
+      if (c.program_id) programs[c.program_id] = c.program_id;
+      if (c.faculty_id) faculty[c.faculty_id]  = c.faculty_id;
+    });
+
+    programSel.innerHTML = '<option value="">Select program...</option>' +
+      Object.keys(programs).map(id => `<option value="${id}">${id.slice(0,8)}…</option>`).join('');
+    facultySel.innerHTML = '<option value="">Select faculty...</option>' +
+      Object.keys(faculty).map(id => `<option value="${id}">${id.slice(0,8)}…</option>`).join('');
+
+    document.getElementById('cf-program-hint').textContent = `${Object.keys(programs).length} programs found from existing courses`;
+    document.getElementById('cf-faculty-hint').textContent = `${Object.keys(faculty).length} faculty found from existing courses`;
+  } catch(e) {
+    programSel.innerHTML = '<option value="">Failed to load — enter UUID manually</option>';
+    facultySel.innerHTML = '<option value="">Failed to load — enter UUID manually</option>';
+    // Fallback to text inputs
+    programSel.outerHTML = '<input class="input" id="cf-program" placeholder="program UUID" />';
+    facultySel.outerHTML = '<input class="input" id="cf-faculty" placeholder="faculty UUID" />';
+  }
+}
+
+async function submitCourse() {
+  const btn   = document.getElementById('course-modal-submit');
+  const errEl = document.getElementById('course-modal-error');
+  errEl.style.display='none';
+  btn.textContent='Creating...'; btn.style.opacity='.7';
+  try {
+    const body = {
+      code:         document.getElementById('cf-code').value.trim(),
+      title:        document.getElementById('cf-title').value.trim(),
+      description:  document.getElementById('cf-desc').value.trim() || undefined,
+      program_id:   document.getElementById('cf-program').value,
+      credits:      parseInt(document.getElementById('cf-credits').value),
+      semester:     document.getElementById('cf-semester').value,
+      faculty_id:   document.getElementById('cf-faculty').value,
+      max_capacity: parseInt(document.getElementById('cf-capacity').value),
+    };
+    const missing = ['code','title','program_id','faculty_id','semester']
+      .filter(k => !body[k]);
+    if (missing.length) throw new Error(`Missing: ${missing.join(', ')}`);
+    await apiFetch('/v1/courses', {method:'POST', body: JSON.stringify(body)});
+    closeModal('course-modal');
+    loadCourses(1);
+  } catch(e) {
+    document.getElementById('course-modal-error-msg').textContent=e.message;
+    errEl.style.display='flex';
+    btn.textContent='Create Course'; btn.style.opacity='1';
+  }
+}
+
+function primaryAction() {
+  if(currentView==='students')   { openStudentModal(); return; }
+  if(currentView==='books')      { openBookModal(); return; }
+  if(currentView==='borrowings') { openBorrowModal(); return; }
+  if(currentView==='courses')    { openCourseModal(); return; }
+  if(currentView==='endpoints')  { window.open(BASE+'/docs','_blank'); return; }
+  if(currentView==='apikeys')    { openApiKeyModal(); return; }
+  openStudentModal();
+}
+
+async function refreshAll() { token=null; await testConnection(); }
+
+// ── API KEYS ─────────────────────────────────────────────────
+async function loadApiKeys() {
+  setContent(`<div class="loading"><div class="spinner"></div> loading api keys...</div>`);
+  try {
+    const res = await apiFetch('/v1/api-keys');
+    const keys = res.data || res || [];
+    setBadge('apikeys', Array.isArray(keys) ? keys.length : '–');
+    const now = new Date();
+    setContent(`
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <div style="flex:1;font-size:12px;color:var(--text3);font-family:var(--mono)">
+          Keys are stored as SHA-256 hashes — the raw key is shown <strong style="color:var(--amber)">only once</strong> at creation.
+          Pass as <span style="color:var(--teal)">X-API-Key: &lt;key&gt;</span> header.
+        </div>
+        <div class="btn primary" onclick="openApiKeyModal()" style="flex-shrink:0">+ New API Key</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">${Array.isArray(keys)?keys.length:0} keys</div></div>
+        <table class="table">
+          <thead><tr><th>Name</th><th>Role</th><th>Key ID</th><th>Created</th><th>Expires</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="apikeys-tbody">${Array.isArray(keys) && keys.length ? keys.map(k => {
+            const created = k.created_at ? new Date(k.created_at).toLocaleDateString('en-AE',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+            const expires = k.expires_at ? new Date(k.expires_at).toLocaleDateString('en-AE',{day:'2-digit',month:'short',year:'numeric'}) : 'Never';
+            const isExpired = k.expires_at && new Date(k.expires_at) < now;
+            const statusClass = !k.is_active ? 'inactive' : isExpired ? 'overdue' : 'active';
+            const statusLabel = !k.is_active ? 'revoked' : isExpired ? 'expired' : 'active';
+            return `<tr>
+              <td style="font-size:13px;color:var(--text);font-weight:500">${k.name}</td>
+              <td><span class="badge ${k.role==='admin'?'graduated':k.role==='service'?'active':'returned'}">${k.role}</span></td>
+              <td style="font-family:var(--mono);font-size:10px;color:var(--text3)">${k.id ? k.id.slice(0,8)+'…' : '—'}</td>
+              <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${created}</td>
+              <td style="font-family:var(--mono);font-size:11px;color:${isExpired?'var(--red)':'var(--text3)'}">${expires}</td>
+              <td><span class="badge ${statusClass}">${statusLabel}</span></td>
+              <td><div style="display:flex;gap:5px">
+                <div class="btn" style="padding:3px 8px;font-size:11px" onclick="rotateApiKey('${k.id}','${k.name.replace(/'/g,"\\'")}')">↻ rotate</div>
+                <div class="btn danger" style="padding:3px 8px;font-size:11px" onclick="revokeApiKey('${k.id}','${k.name.replace(/'/g,"\\'")}')">revoke</div>
+              </div></td>
+            </tr>`;
+          }).join('') : `<tr><td colspan="7" class="empty" style="padding:30px;text-align:center">No API keys yet — create one to enable machine-to-machine auth.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-header"><div class="card-title">Usage examples</div></div>
+        <div class="card-body">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div>
+              <div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em">Header</div>
+              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:10px 12px;font-family:var(--mono);font-size:11px;color:var(--green)">X-API-Key: uak_your_key_here</div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em">cURL — gov endpoint</div>
+              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:10px 12px;font-family:var(--mono);font-size:11px;color:var(--text2)">curl -H "X-API-Key: uak_..." \\<br>&nbsp;&nbsp;${BASE}/v1/gov/students</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+  } catch(e) {
+    setContent(`<div class="error-banner">⚠ ${e.message}</div><div class="empty" style="margin-top:12px">Endpoint <code style="font-family:var(--mono);color:var(--amber)">/v1/api-keys</code> not implemented yet — it's your first Sprint 9 task!</div>`);
+  }
+}
+
+function openApiKeyModal() {
+  document.getElementById('apikey-modal-title').textContent = 'Create API Key';
+  document.getElementById('ak-name').value = '';
+  document.getElementById('ak-role').value = 'service';
+  document.getElementById('ak-expires').value = '365';
+  document.getElementById('ak-reveal').style.display = 'none';
+  document.getElementById('apikey-modal-error').style.display = 'none';
+  document.getElementById('apikey-modal-footer').innerHTML =
+    `<div class="btn" onclick="closeModal('apikey-modal')">Cancel</div>
+     <div class="btn primary" id="apikey-modal-submit" onclick="submitApiKey()">Create Key</div>`;
+  document.getElementById('apikey-modal').classList.add('show');
+}
+
+async function submitApiKey() {
+  const btn = document.getElementById('apikey-modal-submit');
+  const errEl = document.getElementById('apikey-modal-error');
+  errEl.style.display = 'none';
+  btn.textContent = 'Creating...'; btn.style.opacity = '.7';
+  try {
+    const name = document.getElementById('ak-name').value.trim();
+    const role = document.getElementById('ak-role').value;
+    const days = parseInt(document.getElementById('ak-expires').value);
+    if (!name) throw new Error('Key name is required');
+    const res = await apiFetch('/v1/api-keys', {method:'POST', body: JSON.stringify({name, role, expires_in_days: isNaN(days)?365:days})});
+    const rawKey = res.key || res.api_key || res.raw_key || '(key field not found in response — check your schema)';
+    document.getElementById('ak-value').textContent = rawKey;
+    document.getElementById('ak-reveal').style.display = 'block';
+    document.getElementById('apikey-modal-footer').innerHTML =
+      `<div class="btn primary" onclick="closeModal('apikey-modal');loadApiKeys()">Done</div>`;
+    btn.textContent = 'Created ✓'; btn.style.opacity = '1';
+  } catch(e) {
+    document.getElementById('apikey-modal-error-msg').textContent = e.message;
+    errEl.style.display = 'flex';
+    btn.textContent = 'Create Key'; btn.style.opacity = '1';
+  }
+}
+
+function copyApiKey() {
+  const val = document.getElementById('ak-value').textContent;
+  navigator.clipboard.writeText(val).then(() => {
+    const btn = event.target; btn.textContent = '✓ copied'; btn.style.color='var(--green)';
+    setTimeout(()=>{ btn.textContent='copy'; btn.style.color=''; }, 2000);
+  });
+}
+
+async function rotateApiKey(id, name) {
+  if (!confirm(`Rotate key "${name}"?\nThe current key will stop working immediately.`)) return;
+  try {
+    const res = await apiFetch(`/v1/api-keys/${id}/rotate`, {method:'POST'});
+    const newKey = res.key || res.api_key || res.raw_key;
+    alert(newKey ? `New key for "${name}":\n\n${newKey}\n\nSave this — it won't be shown again.` : 'Key rotated successfully.');
+    loadApiKeys();
+  } catch(e) { alert('Rotate failed: '+e.message); }
+}
+
+async function revokeApiKey(id, name) {
+  if (!confirm(`Revoke API key "${name}"?\nAny integration using this key will break immediately.`)) return;
+  try { await apiFetch(`/v1/api-keys/${id}`,{method:'DELETE'}); loadApiKeys(); }
+  catch(e) { alert('Revoke failed: '+e.message); }
+}
+
+// ── UAE GOV DATA ──────────────────────────────────────────────
+async function loadGovData() {
+  setContent(`<div class="loading"><div class="spinner"></div> loading gov endpoints...</div>`);
+  const [studRes, statsRes, progRes] = await Promise.allSettled([
+    apiFetch('/v1/gov/students?limit=10'),
+    apiFetch('/v1/gov/enrollment-stats'),
+    apiFetch('/v1/gov/programs'),
+  ]);
+  const govStudents = studRes.status==='fulfilled'  ? studRes.value  : null;
+  const govStats    = statsRes.status==='fulfilled' ? statsRes.value : null;
+  const govPrograms = progRes.status==='fulfilled'  ? progRes.value  : null;
+
+  function statusPill(res, label) {
+    return res
+      ? `<span style="color:var(--green);font-family:var(--mono);font-size:10px">✓ ${label}</span>`
+      : `<span style="color:var(--text3);font-family:var(--mono);font-size:10px">– ${label}</span>`;
+  }
+  function jsonBlock(data, endpoint) {
+    if (!data) return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:14px 16px;font-family:var(--mono);font-size:11px;color:var(--text3)">
+      <span style="color:var(--amber)">${endpoint}</span> not yet implemented — Sprint 9 task
+    </div>`;
+    return `<pre style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:14px 16px;font-family:var(--mono);font-size:11px;color:var(--text2);overflow-x:auto;max-height:280px;white-space:pre-wrap;word-break:break-all;margin:0">${JSON.stringify(data, null, 2)}</pre>`;
+  }
+  setContent(`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
+      <div style="font-size:22px">🇦🇪</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600">UAE API-First Policy — Government Reporting Endpoints</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:3px">Machine-to-machine endpoints for UAE MOEHE reporting. Require <span style="font-family:var(--mono);color:var(--amber)">X-API-Key</span> with <span style="font-family:var(--mono);color:var(--teal)">service</span> role.</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end">
+        ${statusPill(govStudents, '/gov/students')}
+        ${statusPill(govStats,    '/gov/enrollment-stats')}
+        ${statusPill(govPrograms, '/gov/programs')}
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="badge get">GET</span>
+          <div class="card-title" style="font-family:var(--mono);font-size:12px">/v1/gov/students</div>
+        </div>
+        <span style="font-size:11px;color:var(--text3)">Student roster in UAE MOEHE format</span>
+      </div>
+      <div class="card-body">${jsonBlock(govStudents, 'GET /v1/gov/students')}</div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="badge get">GET</span>
+            <div class="card-title" style="font-family:var(--mono);font-size:12px">/v1/gov/enrollment-stats</div>
+          </div>
+        </div>
+        <div class="card-body">${jsonBlock(govStats, 'GET /v1/gov/enrollment-stats')}</div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="badge get">GET</span>
+            <div class="card-title" style="font-family:var(--mono);font-size:12px">/v1/gov/programs</div>
+          </div>
+        </div>
+        <div class="card-body">${jsonBlock(govPrograms, 'GET /v1/gov/programs')}</div>
+      </div>
+    </div>
+  `);
+}
+
+testConnection();
+</script>
+</body>
+</html>

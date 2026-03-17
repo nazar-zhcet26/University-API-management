@@ -1,0 +1,159 @@
+<!--
+  policies/student-portal-policy.xml
+  ─────────────────────────────────────────────────────────────────────────────
+  Applied to ALL requests made with a Student Portal subscription key.
+  
+  This policy does four things:
+  1. Validates the JWT token (auth happens at the GATEWAY — before hitting backend)
+  2. Enforces rate limiting per subscription (500 calls/minute)
+  3. Caches GET requests for the course catalog (performance)
+  4. Restricts HTTP methods — students cannot DELETE anything through this product
+  
+  Key concept: the gateway enforces these rules BEFORE the request reaches
+  your FastAPI app. If JWT validation fails, FastAPI never sees the request.
+  This protects your backend and saves compute resources.
+  
+  The policy pipeline runs in this order:
+    inbound  → check everything before forwarding
+    backend  → forward to FastAPI
+    outbound → shape the response before returning
+    on-error → handle any errors consistently
+-->
+<policies>
+
+  <inbound>
+
+    <!--
+      STEP 1: Validate the JWT token.
+      
+      We're using our own JWT (HS256) here.
+      In production with Azure AD, replace openid-config with:
+      <openid-config url="https://login.microsoftonline.com/{tenant-id}/v2.0/.well-known/openid-configuration"/>
+      
+      What this checks:
+      - Signature is valid (was this token issued by us?)
+      - Token is not expired
+      - 'aud' claim matches our API identifier
+      - 'role' claim is 'student' (students only for this product)
+      
+      If any check fails: 401 returned immediately. Backend never called.
+    -->
+    <validate-jwt
+      header-name="Authorization"
+      failed-validation-httpcode="401"
+      failed-validation-error-message="Invalid or missing authentication token."
+      require-expiration-time="true"
+      require-signed-tokens="true">
+
+      <issuer-signing-keys>
+        <!-- References our Named Value — never hardcode the key here -->
+        <key>{{jwt-secret-key}}</key>
+      </issuer-signing-keys>
+
+      <required-claims>
+        <claim name="role" match="any">
+          <value>student</value>
+        </claim>
+      </required-claims>
+
+    </validate-jwt>
+
+    <!--
+      STEP 2: Rate limiting.
+      
+      500 calls per 60 seconds per subscription.
+      counter-key uses the Subscription ID so each consumer gets their own counter.
+      
+      If exceeded: 429 Too Many Requests with Retry-After header.
+      
+      Note: This is the GATEWAY rate limit on top of the FastAPI middleware
+      rate limit we built in Sprint 2. Two layers of protection.
+    -->
+    <rate-limit-by-key
+      calls="500"
+      renewal-period="60"
+      counter-key="@(context.Subscription.Id)"
+      increment-condition="@(context.Response.StatusCode >= 200 && context.Response.StatusCode < 300)"
+      retry-after-header-name="Retry-After"
+      retry-after-variable-name="retryAfter" />
+
+    <!--
+      STEP 3: Method restriction for student product.
+      
+      Students cannot DELETE anything through this product.
+      Even if they have a valid JWT, DELETE is blocked at the gateway.
+      This is defense in depth — our backend RBAC would catch it too,
+      but the gateway stops it before it even gets there.
+    -->
+    <choose>
+      <when condition="@(context.Request.Method == "DELETE")">
+        <return-response>
+          <set-status code="403" reason="Forbidden" />
+          <set-header name="Content-Type" exists-action="override">
+            <value>application/json</value>
+          </set-header>
+          <set-body>{
+  "error": {
+    "code": "METHOD_NOT_ALLOWED_FOR_PRODUCT",
+    "message": "DELETE operations are not permitted for the Student Portal product."
+  }
+}</set-body>
+        </return-response>
+      </when>
+    </choose>
+
+    <!--
+      STEP 4: Pass the authenticated user's ID to the backend.
+      
+      We extract the 'sub' claim from the JWT and forward it as a header.
+      This way the backend knows who is making the request without
+      re-decoding the JWT itself.
+      
+      The backend can trust this header because only APIM sets it,
+      and APIM already validated the JWT above.
+    -->
+    <set-header name="X-Authenticated-User-Id" exists-action="override">
+      <value>@{
+        var jwt = context.Request.Headers.GetValueOrDefault("Authorization", "").Replace("Bearer ", "");
+        var token = new System.IdentityModel.Tokens.Jwt.JwtSecurityToken(jwt);
+        return token.Subject;
+      }</value>
+    </set-header>
+
+    <base />
+
+  </inbound>
+
+  <backend>
+    <forward-request timeout="30" />
+  </backend>
+
+  <outbound>
+
+    <!--
+      Cache GET responses for the course catalog for 5 minutes.
+      
+      The course catalog doesn't change every second — caching it at the
+      gateway means 500 students loading the course list simultaneously
+      only results in ONE call to your backend. The other 499 get the
+      cached response from APIM in microseconds.
+      
+      vary-by-query-parameter: different cache entry for each semester filter.
+      So /courses?semester=fall_2026 and /courses?semester=spring_2026
+      are cached separately.
+    -->
+    <cache-store-value
+      key="@("courses-" + context.Request.Url.Query)"
+      value="@(context.Response.Body.As<string>())"
+      duration="300"
+      caching-type="internal" />
+
+    <base />
+
+  </outbound>
+
+  <on-error>
+    <base />
+  </on-error>
+
+</policies>

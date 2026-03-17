@@ -1,0 +1,72 @@
+services:
+
+  # ── FastAPI Application ───────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      ENVIRONMENT: development
+      DEBUG: "true"
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/university_db
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: local-dev-secret-key-not-for-production-use
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+      REFRESH_TOKEN_EXPIRE_DAYS: "7"
+      AZURE_OPENAI_ENDPOINT: "https://nk101-mmrnp3wy-swedencentral.openai.azure.com/"
+      AZURE_OPENAI_API_KEY: "${AZURE_OPENAI_API_KEY}"
+      AZURE_OPENAI_API_VERSION: "2024-02-01"
+      AZURE_OPENAI_EMBEDDING_DEPLOYMENT: "text-embedding-ada-002"
+      AZURE_OPENAI_CHAT_DEPLOYMENT: "gpt-4o"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+   # volumes:
+   #   - ./app:/app/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 
+    networks:
+      - university-network
+
+  # ── PostgreSQL Database ───────────────────────────────────────────────────
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: university_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - university-network
+
+  # ── Redis Cache ───────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - university-network
+
+volumes:
+  postgres_data:
+
+networks:
+  university-network:
+    driver: bridge

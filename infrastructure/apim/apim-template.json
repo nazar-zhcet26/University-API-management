@@ -1,0 +1,276 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+
+  "_comment": [
+    "Azure Resource Manager (ARM) Template — University API Management Instance",
+    "",
+    "What this file does:",
+    "  Defines your entire APIM configuration as code.",
+    "  Deploy this file and Azure creates the APIM instance, products,",
+    "  APIs, and policies automatically — no clicking through the portal.",
+    "",
+    "Why Infrastructure as Code?",
+    "  - Reproducible: deploy identical config to dev, staging, production",
+    "  - Version controlled: your gateway config lives in Git alongside your API code",
+    "  - Reviewable: team can review gateway changes like any other code change",
+    "  - Recoverable: if something breaks, you can redeploy the last known good config",
+    "",
+    "Deploy with:",
+    "  az deployment group create \\",
+    "    --resource-group university-rg \\",
+    "    --template-file apim-template.json \\",
+    "    --parameters @apim-parameters.json"
+  ],
+
+  "parameters": {
+    "apimServiceName": {
+      "type": "string",
+      "defaultValue": "university-apim",
+      "metadata": { "description": "Name of the APIM instance — must be globally unique in Azure" }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": { "description": "Azure region — use same region as your backend" }
+    },
+    "publisherEmail": {
+      "type": "string",
+      "defaultValue": "api-team@university.ac.ae",
+      "metadata": { "description": "Admin email — receives system notifications" }
+    },
+    "publisherName": {
+      "type": "string",
+      "defaultValue": "University IT - API Team",
+      "metadata": { "description": "Shown in developer portal" }
+    },
+    "backendUrl": {
+      "type": "string",
+      "metadata": { "description": "URL of your FastAPI backend — Azure Container App or App Service URL" }
+    },
+    "environment": {
+      "type": "string",
+      "defaultValue": "development",
+      "allowedValues": ["development", "staging", "production"]
+    }
+  },
+
+  "variables": {
+    "apimSku": "[if(equals(parameters('environment'), 'production'), 'Standard', 'Developer')]"
+  },
+
+  "resources": [
+
+    {
+      "comments": "─── APIM SERVICE INSTANCE ───────────────────────────────────────────────",
+      "type": "Microsoft.ApiManagement/service",
+      "apiVersion": "2023-03-01-preview",
+      "name": "[parameters('apimServiceName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "[variables('apimSku')]",
+        "capacity": 1
+      },
+      "properties": {
+        "publisherEmail": "[parameters('publisherEmail')]",
+        "publisherName": "[parameters('publisherName')]",
+        "virtualNetworkType": "None",
+        "customProperties": {
+          "Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Protocols.Tls10": "false",
+          "Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Protocols.Tls11": "false",
+          "Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Tls10": "false",
+          "Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Tls11": "false"
+        }
+      }
+    },
+
+    {
+      "comments": "─── BACKEND: Your FastAPI Application ───────────────────────────────────",
+      "comments2": "Tells APIM where to forward requests after applying policies.",
+      "type": "Microsoft.ApiManagement/service/backends",
+      "apiVersion": "2023-03-01-preview",
+      "name": "[concat(parameters('apimServiceName'), '/university-api-backend')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', parameters('apimServiceName'))]"
+      ],
+      "properties": {
+        "description": "University Services FastAPI Application",
+        "url": "[parameters('backendUrl')]",
+        "protocol": "http",
+        "tls": {
+          "validateCertificateChain": true,
+          "validateCertificateName": true
+        }
+      }
+    },
+
+    {
+      "comments": "─── NAMED VALUE: JWT Secret ─────────────────────────────────────────────",
+      "comments2": [
+        "Named Values are APIM's secret store — like environment variables for policies.",
+        "Policies reference these by name, never hardcode secrets in policy XML.",
+        "In production: link this to Azure Key Vault instead of storing the value directly."
+      ],
+      "type": "Microsoft.ApiManagement/service/namedValues",
+      "apiVersion": "2023-03-01-preview",
+      "name": "[concat(parameters('apimServiceName'), '/jwt-secret-key')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', parameters('apimServiceName'))]"
+      ],
+      "properties": {
+        "displayName": "jwt-secret-key",
+        "value": "REPLACE-WITH-KEY-VAULT-REFERENCE-IN-PRODUCTION",
+        "secret": true
+      }
+    },
+
+    {
+      "comments": "─── PRODUCT: Student Portal ─────────────────────────────────────────────",
+      "comments2": [
+        "Products bundle APIs and define access tiers.",
+        "The student portal gets access to student, course, and library APIs.",
+        "Requires subscription (consumers must request access).",
+        "Auto-approved — no manual approval step needed for this product."
+      ],
+      "type": "Microsoft.ApiManagement/service/products",
+      "apiVersion": "2023-03-01-preview",
+      "name": "[concat(parameters('apimServiceName'), '/student-portal')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', parameters('apimServiceName'))]"
+      ],
+      "properties": {
+        "displayName": "Student Portal",
+        "description": "Access for the student-facing portal application. Includes student profiles, course enrollment, and library borrowing.",
+        "subscriptionRequired": true,
+        "approvalRequired": false,
+        "subscriptionsLimit": 1,
+        "state": "published",
+        "terms": "This product is for use by the official university student portal application only."
+      }
+    },
+
+    {
+      "comments": "─── PRODUCT: Faculty Dashboard ──────────────────────────────────────────",
+      "type": "Microsoft.ApiManagement/service/products",
+      "apiVersion": "2023-03-01-preview",
+      "name": "[concat(parameters('apimServiceName'), '/faculty-dashboard')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', parameters('apimServiceName'))]"
+      ],
+      "properties": {
+        "displayName": "Faculty Dashboard",
+        "description": "Access for faculty-facing applications. Read access to student data, full access to course management.",
+        "subscriptionRequired": true,
+        "approvalRequired": false,
+        "subscriptionsLimit": 1,
+        "state": "published"
+      }
+    },
+
+    {
+      "comments": "─── PRODUCT: Admin ──────────────────────────────────────────────────────",
+      "type": "Microsoft.ApiManagement/service/products",
+      "apiVersion": "2023-03-01-preview",
+      "name": "[concat(parameters('apimServiceName'), '/admin')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', parameters('apimServiceName'))]"
+      ],
+      "properties": {
+        "displayName": "Admin",
+        "description": "Full access to all APIs. IT administrators only.",
+        "subscriptionRequired": true,
+        "approvalRequired": true,
+        "subscriptionsLimit": 5,
+        "state": "published"
+      }
+    },
+
+    {
+      "comments": "─── PRODUCT: Partner Read-Only ──────────────────────────────────────────",
+      "comments2": [
+        "Partner institutions get read-only access to public course data only.",
+        "approvalRequired: true means someone on your team must manually approve",
+        "each subscription request. Good for external/partner access."
+      ],
+      "type": "Microsoft.ApiManagement/service/products",
+      "apiVersion": "2023-03-01-preview",
+      "name": "[concat(parameters('apimServiceName'), '/partner-readonly')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', parameters('apimServiceName'))]"
+      ],
+      "properties": {
+        "displayName": "Partner - Read Only",
+        "description": "Limited read-only access to course catalog and program information for partner institutions.",
+        "subscriptionRequired": true,
+        "approvalRequired": true,
+        "subscriptionsLimit": 20,
+        "state": "published"
+      }
+    },
+
+    {
+      "comments": "─── API DEFINITION: University Services v1 ──────────────────────────────",
+      "comments2": [
+        "This imports our OpenAPI spec into APIM.",
+        "In practice you'd use: az apim api import --specification-format OpenApi",
+        "The path '/v1' becomes the base URL suffix in APIM.",
+        "ServiceUrl points to our FastAPI backend."
+      ],
+      "type": "Microsoft.ApiManagement/service/apis",
+      "apiVersion": "2023-03-01-preview",
+      "name": "[concat(parameters('apimServiceName'), '/university-api-v1')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', parameters('apimServiceName'))]"
+      ],
+      "properties": {
+        "displayName": "University Services API v1",
+        "description": "Central API platform for university operations — Students, Courses, Faculty, Library",
+        "path": "v1",
+        "protocols": ["https"],
+        "serviceUrl": "[parameters('backendUrl')]",
+        "apiVersion": "v1",
+        "apiVersionSetId": "[concat(resourceId('Microsoft.ApiManagement/service', parameters('apimServiceName')), '/apiVersionSets/university-api')]",
+        "subscriptionRequired": true,
+        "isCurrent": true,
+        "format": "openapi+json-link",
+        "value": "https://your-storage-account.blob.core.windows.net/specs/openapi.json"
+      }
+    },
+
+    {
+      "comments": "─── GLOBAL POLICY ───────────────────────────────────────────────────────",
+      "comments2": [
+        "Applied to EVERY request through this APIM instance.",
+        "This is where you put cross-cutting concerns:",
+        "  - CORS headers",
+        "  - Request ID injection (correlation)",
+        "  - Remove server headers (security)",
+        "  - Global error format"
+      ],
+      "type": "Microsoft.ApiManagement/service/policies",
+      "apiVersion": "2023-03-01-preview",
+      "name": "[concat(parameters('apimServiceName'), '/policy')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', parameters('apimServiceName'))]"
+      ],
+      "properties": {
+        "value": "<policies>\n  <inbound>\n    <!-- Inject a unique request ID for tracing across services -->\n    <set-header name=\"X-Request-ID\" exists-action=\"skip\">\n      <value>@(Guid.NewGuid().ToString())</value>\n    </set-header>\n    <!-- Pass the request ID to the backend -->\n    <set-header name=\"X-Request-ID\" exists-action=\"override\">\n      <value>@(context.Request.Headers.GetValueOrDefault(\"X-Request-ID\", Guid.NewGuid().ToString()))</value>\n    </set-header>\n  </inbound>\n  <backend>\n    <forward-request />\n  </backend>\n  <outbound>\n    <!-- Expose Request ID to consumers for support tickets -->\n    <set-header name=\"X-Request-ID\" exists-action=\"override\">\n      <value>@(context.Request.Headers.GetValueOrDefault(\"X-Request-ID\"))</value>\n    </set-header>\n    <!-- Remove headers that reveal implementation details -->\n    <delete-header name=\"X-Powered-By\" />\n    <delete-header name=\"Server\" />\n    <!-- Add API version header to every response -->\n    <set-header name=\"X-API-Version\" exists-action=\"override\">\n      <value>1.0.0</value>\n    </set-header>\n  </outbound>\n  <on-error>\n    <!-- Consistent error format for gateway-level errors -->\n    <set-status code=\"@(context.Response.StatusCode)\" />\n    <set-header name=\"Content-Type\" exists-action=\"override\">\n      <value>application/json</value>\n    </set-header>\n  </on-error>\n</policies>",
+        "format": "xml"
+      }
+    }
+
+  ],
+
+  "outputs": {
+    "apimGatewayUrl": {
+      "type": "string",
+      "value": "[concat('https://', parameters('apimServiceName'), '.azure-api.net')]",
+      "metadata": { "description": "Your API gateway URL — this is what consumers call" }
+    },
+    "developerPortalUrl": {
+      "type": "string",
+      "value": "[concat('https://', parameters('apimServiceName'), '.developer.azure-api.net')]",
+      "metadata": { "description": "Developer portal — where consumers read docs and request access" }
+    }
+  }
+}

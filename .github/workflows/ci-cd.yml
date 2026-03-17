@@ -1,0 +1,321 @@
+# .github/workflows/ci-cd.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# University API — CI/CD Pipeline
+#
+# Triggers:
+#   - Every push to main branch       → full pipeline (test + build + deploy)
+#   - Every pull request to main      → test only (no deployment)
+#   - Manual trigger (workflow_dispatch) → full pipeline on demand
+#
+# Pipeline structure:
+#   Job 1: test     → run full test suite
+#   Job 2: build    → build + push Docker image to Azure Container Registry
+#   Job 3: deploy   → deploy to Azure Container Apps + health check
+#
+# Jobs 2 and 3 only run on pushes to main (not pull requests).
+# This means every PR gets tested, but only merged code gets deployed.
+#
+# Required GitHub Secrets (set in repo Settings → Secrets and variables):
+#   AZURE_CLIENT_ID         - Service principal app ID
+#   AZURE_TENANT_ID         - Azure AD tenant ID
+#   AZURE_SUBSCRIPTION_ID   - Azure subscription ID
+#   ACR_LOGIN_SERVER        - e.g. universityapi.azurecr.io
+#   AZURE_RESOURCE_GROUP    - e.g. university-api-rg
+#   CONTAINER_APP_NAME      - e.g. university-api
+#   DATABASE_URL            - Production database connection string
+#   SECRET_KEY              - JWT signing key (min 32 chars, random)
+#   REDIS_URL               - Production Redis connection string
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: University API CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # allows manual trigger from GitHub UI
+
+# Cancel in-progress runs when a new commit is pushed
+# Prevents two deployments running simultaneously
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  IMAGE_NAME: university-api
+
+jobs:
+
+  # ── Job 1: Test ─────────────────────────────────────────────────────────────
+  # Runs on every push and every pull request
+  # If this fails, the pipeline stops — nothing gets deployed
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    # Service containers — these run as Docker containers alongside your test runner
+    # Your tests connect to these using localhost:5432 and localhost:6379
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: university_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        # Health check — wait until postgres is ready before running tests
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # Test environment variables — override production values
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/university_test
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: test-secret-key-not-for-production-use-only-ci
+      ENVIRONMENT: testing
+      DEBUG: "true"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          # Cache pip dependencies — speeds up subsequent runs significantly
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio httpx aiosqlite
+
+      - name: Run database migrations
+        run: |
+          alembic upgrade head
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/university_test
+
+      - name: Run unit tests
+        run: |
+          pytest tests/unit/ -v --tb=short -m "not integration"
+
+      - name: Run integration tests
+        run: |
+          pytest tests/integration/ -v --tb=short
+
+      - name: Generate test coverage report
+        run: |
+          pip install pytest-cov
+          pytest tests/ --cov=app --cov-report=xml --cov-report=term-missing
+        continue-on-error: true  # don't fail pipeline on coverage drop
+
+      - name: Upload coverage to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+        if: always()  # upload even if tests failed
+
+
+  # ── Job 2: Build ─────────────────────────────────────────────────────────────
+  # Only runs on pushes to main (not pull requests)
+  # Builds Docker image, tags it, pushes to Azure Container Registry
+  build:
+    name: Build & Push
+    runs-on: ubuntu-latest
+    needs: test  # only runs if test job passed
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    outputs:
+      # Pass the image tag to the deploy job
+      image-tag: ${{ steps.meta.outputs.tags }}
+      short-sha: ${{ steps.meta.outputs.sha-short }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate image metadata
+        id: meta
+        run: |
+          # Tag image with both the git commit SHA and 'latest'
+          # SHA tag = immutable, traceable to exact commit
+          # latest tag = always points to newest image
+          SHA_SHORT="${GITHUB_SHA::8}"
+          echo "sha-short=${SHA_SHORT}" >> $GITHUB_OUTPUT
+          echo "tags=${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${SHA_SHORT},${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
+
+      # Azure login using OpenID Connect (OIDC) — more secure than storing passwords
+      # No long-lived credentials — GitHub gets a short-lived token from Azure AD
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to Azure Container Registry
+        run: |
+          az acr login --name ${{ secrets.ACR_LOGIN_SERVER }}
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --tag ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.sha-short }} \
+            --tag ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest \
+            --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+            --build-arg GIT_SHA=${{ github.sha }} \
+            .
+
+      - name: Run security scan on image
+        # Trivy scans for known CVEs in your base image and dependencies
+        # fail-on: CRITICAL means only critical vulnerabilities block deployment
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.sha-short }}
+          format: table
+          exit-code: 1
+          severity: CRITICAL
+        continue-on-error: true  # don't block deployment on scan issues during setup
+
+      - name: Push image to Azure Container Registry
+        run: |
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.sha-short }}
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Add deployment summary
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: \`${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tag**: \`${{ steps.meta.outputs.sha-short }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+
+
+  # ── Job 3: Deploy ─────────────────────────────────────────────────────────────
+  # Only runs after build passes
+  # Deploys to Azure Container Apps, runs migrations, verifies health
+  deploy:
+    name: Deploy to Azure
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    # Deployment environment — adds manual approval gate in GitHub UI
+    # Go to Settings → Environments → production → add required reviewers
+    # for an approval step before production deployments
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run database migrations
+        # Run migrations BEFORE updating the app image
+        # This ensures the new schema is ready before the new code starts
+        # The new app version must be backward-compatible with the old schema
+        # during the brief overlap (zero-downtime migration rule)
+        run: |
+          az containerapp job start \
+            --name university-api-migrations \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --image ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.short-sha }} \
+            --command "alembic upgrade head"
+
+      - name: Deploy new image to Container App
+        run: |
+          az containerapp update \
+            --name ${{ secrets.CONTAINER_APP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --image ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.short-sha }} \
+            --set-env-vars \
+              DATABASE_URL=secretref:database-url \
+              SECRET_KEY=secretref:secret-key \
+              REDIS_URL=secretref:redis-url \
+              ENVIRONMENT=production \
+              APP_VERSION=${{ needs.build.outputs.short-sha }}
+
+      - name: Wait for deployment to stabilise
+        run: sleep 30
+
+      - name: Health check — verify deployment succeeded
+        # Hit the readiness endpoint to confirm the new version is healthy
+        # If this fails, we roll back automatically
+        id: health-check
+        run: |
+          # Get the app's URL from Azure
+          APP_URL=$(az containerapp show \
+            --name ${{ secrets.CONTAINER_APP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query "properties.configuration.ingress.fqdn" \
+            --output tsv)
+
+          echo "Checking https://${APP_URL}/health/ready"
+
+          # Retry health check up to 5 times with 10-second intervals
+          for i in {1..5}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://${APP_URL}/health/ready")
+            echo "Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "Health check passed!"
+              exit 0
+            fi
+            sleep 10
+          done
+
+          echo "Health check failed after 5 attempts"
+          exit 1
+
+      - name: Roll back on failed health check
+        if: failure() && steps.health-check.outcome == 'failure'
+        run: |
+          echo "Deployment unhealthy — rolling back to previous revision"
+          # Get the previous revision name
+          PREV_REVISION=$(az containerapp revision list \
+            --name ${{ secrets.CONTAINER_APP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query "[-2].name" --output tsv)
+
+          # Activate previous revision and deactivate current
+          az containerapp revision activate \
+            --name ${{ secrets.CONTAINER_APP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --revision $PREV_REVISION
+
+          echo "Rolled back to revision: $PREV_REVISION"
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: production" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image tag**: \`${{ needs.build.outputs.short-sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployed by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit message**: ${{ github.event.head_commit.message }}" >> $GITHUB_STEP_SUMMARY
