@@ -29,7 +29,8 @@ import sys
 import os
 import argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+import app.models.models
+from app.models.api_key import ApiKey
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import select, text
 from app.models.models import Book
